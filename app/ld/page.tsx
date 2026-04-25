@@ -433,7 +433,7 @@ export default function LDPage() {
   const [running, setRunning] = useState(false)
   const [visibleSteps, setVisibleSteps] = useState(0)
   const [logs, setLogs] = useState<{ text: string; tone: Tone }[]>([
-    { text: "Live Demo ready; target repo Aaxhirrr/swe-bench-context-repo", tone: "good" },
+    { text: "moonshot ready — choose a dataset to begin", tone: "good" },
     { text: "try: run live-demo, open dataset-lab, or run nova --real", tone: "muted" },
   ])
   
@@ -442,6 +442,7 @@ export default function LDPage() {
   const [novaLoading, setNovaLoading] = useState(false)
   const [novaResult, setNovaResult] = useState<LiveNovaResult | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
+  const [selectedDataset, setSelectedDataset] = useState<"standard" | "enterprise">("standard")
 
   const [baseline, setBaseline] = useState<BaselineRunData>(baselineStatic)
   const [moonshot, setMoonshot] = useState<MoonshotRunResult>(() => {
@@ -459,7 +460,7 @@ export default function LDPage() {
   const task = labData.tasks.find(item => item.id === taskId) ?? labData.tasks[0]
 
   useEffect(() => {
-    fetch("/api/live-run", { method: "POST" })
+    fetch("/api/live-run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataset: selectedDataset }) })
       .then(res => res.json())
       .then(liveData => {
         if (liveData && liveData.baseline && liveData.moonshot) {
@@ -506,12 +507,17 @@ export default function LDPage() {
     setTab("engine")
     setRunning(true)
     setVisibleSteps(0)
-    addLog({ text: "$ scan ./datasets/swe-adventure-enterprise", tone: "muted" })
-    addLog({ text: "[live] Scanning local dataset directory...", tone: "info" })
+    const isEnterprise = selectedDataset === "enterprise"
+    addLog({ text: isEnterprise ? "$ scan ./datasets/swe-adventure-enterprise" : "$ scan Aaxhirrr/swe-bench-context-repo", tone: "muted" })
+    addLog({ text: isEnterprise ? "[live] Scanning local medusajs/medusa dataset..." : "[live] Fetching Aaxhirrr/swe-bench-context-repo from GitHub...", tone: "info" })
     
     let liveData: { baseline: BaselineRunData; moonshot: MoonshotRunResult } | null = null
     try {
-      const res = await fetch("/api/live-run", { method: "POST" })
+      const res = await fetch("/api/live-run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataset: selectedDataset }),
+      })
       if (res.ok) liveData = await res.json()
     } catch (e) {
       console.error(e)
@@ -673,6 +679,48 @@ export default function LDPage() {
               </p>
             </div>
             <Terminal lines={logs} input={input} setInput={setInput} runCommand={runCommand} running={running} />
+          </div>
+        </section>
+
+        {/* ── Dataset picker ──────────────────────────────────────────────── */}
+        <section className="rounded-[1.5rem] border border-stone-200 bg-white/65 p-4">
+          <div className="mb-3 text-[10px] uppercase tracking-[0.22em] text-stone-400">Choose dataset</div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              onClick={() => setSelectedDataset("standard")}
+              className={`rounded-2xl border p-4 text-left transition-all duration-200 ${
+                selectedDataset === "standard"
+                  ? "border-stone-900 bg-stone-950 text-white shadow-lg"
+                  : "border-stone-200 bg-white text-stone-700 hover:border-stone-400"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className={`font-mono text-[10px] uppercase tracking-[0.2em] ${selectedDataset === "standard" ? "text-emerald-400" : "text-stone-400"}`}>Standard</div>
+                {selectedDataset === "standard" && <div className="h-2 w-2 rounded-full bg-emerald-400" />}
+              </div>
+              <div className={`mt-2 font-mono text-sm font-medium ${selectedDataset === "standard" ? "text-white" : "text-stone-800"}`}>swe-bench-context-repo</div>
+              <div className={`mt-1 text-xs leading-relaxed ${selectedDataset === "standard" ? "text-white/50" : "text-stone-400"}`}>
+                ~14 files · ~1,300 tokens baseline · Fetched live from GitHub
+              </div>
+            </button>
+
+            <button
+              onClick={() => setSelectedDataset("enterprise")}
+              className={`rounded-2xl border p-4 text-left transition-all duration-200 ${
+                selectedDataset === "enterprise"
+                  ? "border-emerald-700 bg-emerald-950 text-white shadow-lg"
+                  : "border-stone-200 bg-white text-stone-700 hover:border-emerald-500"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className={`font-mono text-[10px] uppercase tracking-[0.2em] ${selectedDataset === "enterprise" ? "text-emerald-400" : "text-stone-400"}`}>Enterprise</div>
+                {selectedDataset === "enterprise" && <div className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />}
+              </div>
+              <div className={`mt-2 font-mono text-sm font-medium ${selectedDataset === "enterprise" ? "text-white" : "text-stone-800"}`}>medusajs/medusa</div>
+              <div className={`mt-1 text-xs leading-relaxed ${selectedDataset === "enterprise" ? "text-white/50" : "text-stone-400"}`}>
+                8,175 files · 7.5M tokens baseline · Scanned locally · 99.7% reduction
+              </div>
+            </button>
           </div>
         </section>
 
