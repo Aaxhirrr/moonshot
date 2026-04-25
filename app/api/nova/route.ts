@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import type { NovaOutput } from "@/types"
 
-const DEFAULT_MODEL = "amazon.nova-pro-v1:0"
+const DEFAULT_BASE_URL = "https://api.nova.amazon.com/v1"
+const DEFAULT_MODEL = "nova-premier-v1"
 
 type NovaRequest = {
   prompt?: string
@@ -61,6 +62,12 @@ function extractText(data: unknown): string {
   )
 }
 
+function completionUrl(baseUrl: string) {
+  const normalized = baseUrl.replace(/\/$/, "")
+  if (normalized.endsWith("/chat/completions")) return normalized
+  return `${normalized}/chat/completions`
+}
+
 function normalizeLiveResponse(data: unknown, model: string): NovaApiResponse {
   const text = extractText(data)
 
@@ -88,7 +95,7 @@ function normalizeLiveResponse(data: unknown, model: string): NovaApiResponse {
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as NovaRequest
   const prompt = body.prompt?.trim()
-  const apiBaseUrl = process.env.NOVA_API_BASE_URL
+  const apiBaseUrl = process.env.NOVA_API_BASE_URL || DEFAULT_BASE_URL
   const apiKey = process.env.NOVA_API_KEY
   const model = process.env.NOVA_MODEL || DEFAULT_MODEL
   const timeoutMs = Number(process.env.NOVA_TIMEOUT_MS || 20000)
@@ -97,15 +104,15 @@ export async function POST(request: Request) {
     return NextResponse.json(fallbackResponse("Missing prompt; showing cached mock response.", model), { status: 400 })
   }
 
-  if (!apiBaseUrl || !apiKey) {
-    return NextResponse.json(fallbackResponse("NOVA_API_BASE_URL or NOVA_API_KEY is missing; showing cached mock response.", model))
+  if (!apiKey) {
+    return NextResponse.json(fallbackResponse("NOVA_API_KEY is missing; showing cached mock response.", model))
   }
 
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
-    const response = await fetch(apiBaseUrl, {
+    const response = await fetch(completionUrl(apiBaseUrl), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -114,6 +121,8 @@ export async function POST(request: Request) {
       signal: controller.signal,
       body: JSON.stringify({
         model,
+        temperature: 0.2,
+        max_completion_tokens: 900,
         messages: [
           {
             role: "system",
