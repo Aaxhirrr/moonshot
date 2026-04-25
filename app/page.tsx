@@ -163,8 +163,8 @@ export default function AgenticPage() {
           {/* 3 metrics — staggered after title */}
           <div className="flex gap-8 sm:gap-12">
             {[
-              { value: "79.2%", label: "Token Reduction" },
-              { value: "86k→17.9k", label: "Input Tokens" },
+              { value: "99.7%", label: "Token Reduction" },
+              { value: "7.5M→19,999", label: "Input Tokens" },
               { value: "Same fix", label: "Cleaner Context" },
             ].map((stat, i) => (
               <div

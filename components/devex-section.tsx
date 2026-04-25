@@ -49,7 +49,7 @@ const STEPS = [
       { type: "output", text: "// package-lock.json → blocked" },
       { type: "output", text: "// old-debug.log → summarized" },
       { type: "gap" },
-      { type: "success", text: "// 79.2% token reduction" },
+      { type: "success", text: "// 99.7% token reduction" },
     ],
   },
   {
@@ -62,7 +62,7 @@ const STEPS = [
       { type: "comment", text: "# Send optimized context to Nova" },
       { type: "command", text: "nova.invoke(optimizedContext)" },
       { type: "gap" },
-      { type: "output", text: "  Input tokens: 17,920 (was 86,240)" },
+      { type: "output", text: "  Input tokens: 19,999 (was 7,515,813)" },
       { type: "output", text: "  Processing..." },
       { type: "gap" },
       { type: "success", text: "✓ Fix generated successfully" },
