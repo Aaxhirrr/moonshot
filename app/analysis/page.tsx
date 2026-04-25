@@ -70,7 +70,7 @@ export default function AnalysisPage() {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F2EFE5] px-4 py-6 text-[#111]">
         <div className="animate-pulse font-mono text-[11px] uppercase tracking-[0.2em] text-black/40">
-          Fetching live GitHub repo Aaxhirrr/swe-bench-context-repo...
+          Scanning local dataset (medusajs/medusa)...
         </div>
       </main>
     )

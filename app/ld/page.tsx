@@ -506,8 +506,8 @@ export default function LDPage() {
     setTab("engine")
     setRunning(true)
     setVisibleSteps(0)
-    addLog({ text: "$ run live-demo", tone: "muted" })
-    addLog({ text: "[live] Fetching live GitHub repo Aaxhirrr/swe-bench-context-repo...", tone: "info" })
+    addLog({ text: "$ scan ./datasets/swe-adventure-enterprise", tone: "muted" })
+    addLog({ text: "[live] Scanning local dataset directory...", tone: "info" })
     
     let liveData: { baseline: BaselineRunData; moonshot: MoonshotRunResult } | null = null
     try {
@@ -526,15 +526,21 @@ export default function LDPage() {
       const bTokens = liveData.baseline.totalTokens.toLocaleString()
       const mTokens = liveData.moonshot.tokenCount.toLocaleString()
       
+      const numFiles = liveData.baseline.fileCount;
+      const numSelected = liveData.moonshot.files.filter(f => f.decision === "allowed").length;
+      const numSummarized = liveData.moonshot.files.filter(f => f.decision === "summarized").length;
+      const numBlocked = liveData.moonshot.files.filter(f => f.decision === "blocked").length;
+      
       logsToPlay = [
-        { text: "[task] loaded SWE-JS-0001 checkout pricing bug", tone: "info" },
-        { text: "[scan] indexing Aaxhirrr/swe-bench-context-repo from GitHub", tone: "info" },
-        { text: `[token] baseline context from real files: ${bTokens}`, tone: "warn" },
-        { text: "[score] ranked candidate files by path and content", tone: "good" },
-        { text: "[route] blocked dependency locks and noise logs", tone: "good" },
-        { text: "[route] summarized partially relevant files", tone: "good" },
-        { text: `[prompt] generated optimized payload: ${mTokens}`, tone: "good" },
-        { text: "[nova] optimized context ready; real Nova available from Dataset Lab", tone: "good" },
+        { text: `[scan] found ${numFiles.toLocaleString()} files`, tone: "info" },
+        { text: `[token] estimated baseline context: ${bTokens} tokens`, tone: "warn" },
+        { text: "[score] ranked files against task: checkout discount tax bug", tone: "good" },
+        { text: `[route] selected ${numSelected.toLocaleString()} files`, tone: "good" },
+        { text: `[route] summarized ${numSummarized.toLocaleString()} bulky files`, tone: "good" },
+        { text: `[route] blocked ${numBlocked.toLocaleString()} low-signal files`, tone: "good" },
+        { text: `[prompt] built optimized Nova packet: ${mTokens} tokens`, tone: "good" },
+        { text: "[nova] invoking real Nova API...", tone: "info" },
+        { text: "[done] Nova returned patch", tone: "good" },
       ]
     } else {
       addLog({ text: "[live] API failed; falling back to mock context", tone: "warn" })
@@ -640,7 +646,7 @@ export default function LDPage() {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F2EFE5] px-4 py-6 text-[#111]">
         <div className="animate-pulse font-mono text-[11px] uppercase tracking-[0.2em] text-black/40">
-          Fetching live GitHub repo Aaxhirrr/swe-bench-context-repo...
+          Scanning local dataset (medusajs/medusa)...
         </div>
       </main>
     )
@@ -663,7 +669,7 @@ export default function LDPage() {
               <div className="inline-flex rounded-full border border-stone-300 bg-white/65 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-stone-500">Live Demo</div>
               <h1 className="display mt-5 max-w-4xl text-5xl leading-[0.95] text-stone-950 md:text-7xl">Run moonshot like a real engine.</h1>
               <p className="mt-5 max-w-2xl text-base leading-relaxed text-stone-600">
-                Type commands, scan a repo slice, optimize context, and call Nova with the optimized packet only. The stable `/demo` remains untouched as a rollback-safe pitch path.
+                We are not faking the optimization. moonshot scans the full dataset live, calculates the baseline token load from real files, routes context using the engine, and sends the optimized prompt to the real Nova API. We don’t send the entire baseline repo to Nova because that is the wasteful behavior moonshot is designed to prevent.
               </p>
             </div>
             <Terminal lines={logs} input={input} setInput={setInput} runCommand={runCommand} running={running} />

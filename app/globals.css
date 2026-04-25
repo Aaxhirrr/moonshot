@@ -246,6 +246,7 @@
 /* Smooth scrolling */
 html {
   scroll-behavior: smooth;
+  zoom: 1.1;
 }
 
 /* Ambient slider — minimal, unlabeled control */

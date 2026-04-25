@@ -3,23 +3,64 @@ import { scoreRelevance } from "@/lib/relevanceScorer"
 import { routeContext, buildPrompt, countAllowedTokens } from "@/lib/contextRouter"
 import type { RepoFile, BaselineRunData, MoonshotRunResult } from "@/types"
 import baselineRunJson from "@/data/baselineRun.json"
+import fs from "fs"
+import path from "path"
 
 const TASK = "Fix checkout bug where discounts are applied after tax instead of before tax."
 const TOKEN_BUDGET = 20000
 
+// Directories to scan — real source code only, skip docs/www (Windows deep-path issues)
+const SCAN_DIRS = ["packages", "integration-tests", "e2e"]
+// File extensions worth reading
+const SOURCE_EXTS = new Set([".ts", ".tsx", ".js", ".json", ".md", ".env", ".yaml", ".yml"])
+const MAX_FILE_SIZE = 200_000 // skip binary blobs > 200KB
+
+async function getFilesRecursively(
+  dir: string,
+  baseDir: string,
+  fileList: { path: string; size: number }[] = [],
+  depth = 0
+): Promise<{ path: string; size: number }[]> {
+  if (depth > 12) return fileList
+  try {
+    const entries = await fs.promises.readdir(dir)
+    for (const entry of entries) {
+      if (entry === "node_modules" || entry === ".git" || entry === ".turbo") continue
+      const full = path.join(dir, entry)
+      let stat: fs.Stats
+      try { stat = await fs.promises.stat(full) } catch { continue }
+      if (stat.isDirectory()) {
+        await getFilesRecursively(full, baseDir, fileList, depth + 1)
+      } else {
+        const ext = path.extname(entry).toLowerCase()
+        if (!SOURCE_EXTS.has(ext)) continue
+        if (stat.size > MAX_FILE_SIZE) continue
+        const relPath = path.relative(baseDir, full).replace(/\\/g, "/")
+        fileList.push({ path: relPath, size: stat.size })
+      }
+    }
+  } catch (e) {
+    // ignore permission errors / deep paths
+  }
+  return fileList
+}
+
 export async function POST(request: Request) {
   try {
-    // 1. Fetch real repo tree
-    const treeRes = await fetch("https://api.github.com/repos/Aaxhirrr/swe-bench-context-repo/git/trees/main?recursive=1", {
-      headers: { "User-Agent": "moonshot" }
-    })
-    
-    if (!treeRes.ok) {
-      throw new Error(`GitHub API returned ${treeRes.status}`)
-    }
-    
-    const treeData = await treeRes.json()
-    const files = treeData.tree.filter((item: any) => item.type === "blob")
+    // 1. Scan real massive dataset — scoped to source dirs only
+    const baseDir = path.join(process.cwd(), "datasets", "swe-adventure-enterprise")
+    const scanResults = await Promise.all(
+      SCAN_DIRS.map(async (subDir) => {
+        const fullPath = path.join(baseDir, subDir)
+        try {
+          await fs.promises.access(fullPath)
+          return getFilesRecursively(fullPath, baseDir)
+        } catch {
+          return []
+        }
+      })
+    )
+    const files = scanResults.flat()
     
     // 2. Compute baseline tokens from actual files
     let repoFiles: RepoFile[] = files.map((f: any) => ({
@@ -36,16 +77,14 @@ export async function POST(request: Request) {
     // Sort descending by path relevance
     repoFiles.sort((a, b) => scoreRelevance(b, TASK) - scoreRelevance(a, TASK))
     
-    // Fetch content for the top 15 files to simulate the "clone" and ensure Nova has the code
+    // Read content for the top 15 files from local disk
     const topFiles = repoFiles.slice(0, 15)
     await Promise.all(topFiles.map(async (file) => {
       try {
-        const res = await fetch(`https://raw.githubusercontent.com/Aaxhirrr/swe-bench-context-repo/main/${file.path}`)
-        if (res.ok) {
-          file.content = await res.text()
-        }
+        const fullPath = path.join(baseDir, file.path)
+        file.content = await fs.promises.readFile(fullPath, "utf-8")
       } catch (e) {
-        // Ignore fetch errors
+        // Ignore read errors
       }
     }))
     
