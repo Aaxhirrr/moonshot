@@ -48,10 +48,31 @@ type LabData = {
 type TabKey = "engine" | "dataset" | "repo" | "trace"
 type Tone = "muted" | "info" | "good" | "warn" | "bad"
 
+type LiveNovaResult = {
+  mode: "live" | "mock" | "cached"
+  model: string
+  note?: string
+  rootCause: string
+  patch: {
+    file: string
+    before: string
+    after: string
+    description: string
+  }
+  testResult: {
+    description: string
+    input: { subtotal: number; discount: number; taxRate: number }
+    expected: number
+    actual: number
+    passed: boolean
+  }
+  tokensUsed: number
+}
+
 const TASK = "Fix checkout bug where discounts are applied after tax instead of before tax."
 const TOKEN_BUDGET = 20000
 
-const SCRIPTED_LOGS: { text: string; tone: Tone }[] = [
+const LIVE_ENGINE_LOGS: { text: string; tone: Tone }[] = [
   { text: "[task] loaded mooncart checkout bug", tone: "info" },
   { text: "[scan] indexing sanitized mooncart fixture", tone: "info" },
   { text: "[token] baseline context estimate: 86,240", tone: "warn" },
@@ -59,7 +80,7 @@ const SCRIPTED_LOGS: { text: string; tone: Tone }[] = [
   { text: "[route] blocked package-lock.json and logs/checkout-debug.log", tone: "good" },
   { text: "[route] summarized src/promotions/coupon-rules.ts", tone: "good" },
   { text: "[prompt] optimized context packet: 17,920", tone: "good" },
-  { text: "[nova] mock-safe patch ready", tone: "good" },
+  { text: "[nova] optimized context ready; real Nova available from Dataset Lab", tone: "good" },
 ]
 
 const LAB_LOGS: { text: string; tone: Tone }[] = [
@@ -68,7 +89,7 @@ const LAB_LOGS: { text: string; tone: Tone }[] = [
   { text: "[score] ranking task-specific files", tone: "info" },
   { text: "[route] blocking env, IDE, install noise", tone: "good" },
   { text: "[prompt] optimized packet ready for Nova", tone: "good" },
-  { text: "[nova] live mode not called yet; cached response shown", tone: "warn" },
+  { text: "[nova] ready for optimized-only live call", tone: "good" },
 ]
 
 function formatTokens(tokens: number) {
@@ -101,6 +122,27 @@ function Metric({ label, value, detail }: { label: string; value: string; detail
   )
 }
 
+function buildDatasetPrompt(task: LabTask) {
+  const selected = task.candidateFiles.filter(file => file.decision === "selected" || file.decision === "summarized")
+  const blocked = task.candidateFiles.filter(file => file.decision === "blocked")
+
+  return `Task: ${task.title}
+
+Issue:
+${task.issue}
+
+Repository: ${task.repo}
+Language: ${task.language}
+
+Moonshot optimized context only:
+${selected.map(file => `\n// ${file.path}\n// decision=${file.decision} score=${file.score} tokens=${file.tokens}\n${file.preview}`).join("\n")}
+
+Blocked context, not sent:
+${blocked.map(file => `- ${file.path} (${file.tokens} tokens, score ${file.score})`).join("\n")}
+
+Return a concise root cause, patch summary, and test result.`
+}
+
 function Terminal({
   lines,
   input,
@@ -114,13 +156,13 @@ function Terminal({
   runCommand: (command: string) => void
   running: boolean
 }) {
-  const suggestions = ["run scripted-demo", "open dataset-lab", "scan repo", "optimize context", "run nova --real", "reset"]
+  const suggestions = ["run live-demo", "open dataset-lab", "scan repo", "optimize context", "run nova --real", "reset"]
 
   return (
     <div className="rounded-[1.5rem] border border-stone-900/10 bg-[#111] p-4 shadow-2xl">
       <div className="mb-3 flex items-center justify-between border-b border-white/10 pb-3">
         <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/35">moonshot LD console</span>
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-300/70">experiment safe</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-300/70">live mode</span>
       </div>
       <div className="min-h-[230px] space-y-1 overflow-hidden">
         {lines.map((line, index) => (
@@ -141,7 +183,7 @@ function Terminal({
           value={input}
           onChange={event => setInput(event.target.value)}
           disabled={running}
-          placeholder="run scripted-demo"
+          placeholder="run live-demo"
           className="min-w-0 flex-1 bg-transparent font-mono text-sm text-white outline-none placeholder:text-white/25 disabled:opacity-50"
         />
         <button type="submit" disabled={running} className="rounded-xl bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-stone-950 disabled:opacity-40">
@@ -164,7 +206,7 @@ function Terminal({
   )
 }
 
-function ScriptedEngine({
+function LiveEngine({
   baseline,
   moonshot,
   visibleSteps,
@@ -175,15 +217,15 @@ function ScriptedEngine({
 }) {
   const moonshotFiles = moonshot.files.filter(file => file.decision !== "blocked")
   const visibleMoonshotFiles = moonshotFiles.slice(0, Math.max(0, visibleSteps - 2))
-  const baselineTokens = visibleSteps >= SCRIPTED_LOGS.length ? baseline.totalTokens : baseline.files.slice(0, visibleSteps).reduce((sum, file) => sum + file.tokens, 0)
-  const moonshotTokens = visibleSteps >= SCRIPTED_LOGS.length ? moonshot.tokenCount : visibleMoonshotFiles.reduce((sum, file) => sum + file.tokens, 0)
+  const baselineTokens = visibleSteps >= LIVE_ENGINE_LOGS.length ? baseline.totalTokens : baseline.files.slice(0, visibleSteps).reduce((sum, file) => sum + file.tokens, 0)
+  const moonshotTokens = visibleSteps >= LIVE_ENGINE_LOGS.length ? moonshot.tokenCount : visibleMoonshotFiles.reduce((sum, file) => sum + file.tokens, 0)
 
   return (
     <div className="space-y-4">
       <div className="grid gap-3 md:grid-cols-4">
         <Metric label="Baseline" value={formatTokens(baselineTokens)} detail="Estimated full context sent to Nova." />
         <Metric label="moonshot" value={formatTokens(moonshotTokens)} detail="Optimized packet built by the router." />
-        <Metric label="Avoided" value={formatTokens(Math.max(0, baseline.totalTokens - moonshot.tokenCount))} detail="Context tokens saved in the scripted run." />
+        <Metric label="Avoided" value={formatTokens(Math.max(0, baseline.totalTokens - moonshot.tokenCount))} detail="Context tokens saved in the live engine run." />
         <Metric label="Result" value="Patch" detail="Same root cause, same passing checkout test." />
       </div>
 
@@ -227,10 +269,16 @@ function DatasetLab({
   data,
   task,
   setTaskId,
+  onRunNova,
+  novaLoading,
+  novaResult,
 }: {
   data: LabData
   task: LabTask
   setTaskId: (id: string) => void
+  onRunNova: () => void
+  novaLoading: boolean
+  novaResult: LiveNovaResult | null
 }) {
   const selected = task.candidateFiles.filter(file => file.decision === "selected")
   const summarized = task.candidateFiles.filter(file => file.decision === "summarized")
@@ -270,8 +318,12 @@ function DatasetLab({
               <h3 className="serif-fine mt-2 text-3xl font-normal">{task.title}</h3>
               <p className="mt-3 max-w-3xl text-sm leading-relaxed text-stone-600">{task.issue}</p>
             </div>
-            <button className="rounded-xl border border-emerald-700/20 bg-emerald-50 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-800">
-              Run real Nova later
+            <button
+              onClick={onRunNova}
+              disabled={novaLoading}
+              className="rounded-xl border border-emerald-700/20 bg-emerald-50 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {novaLoading ? "Nova running" : "Run real Nova"}
             </button>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-4">
@@ -292,6 +344,36 @@ function DatasetLab({
               </div>
             ))}
           </div>
+          <div className="mt-5 rounded-2xl border border-stone-200 bg-[#111] p-5">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/35">Nova response</div>
+              <span className="rounded-full border border-white/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">
+                {novaLoading ? "waiting" : novaResult ? `${novaResult.mode} / ${novaResult.model}` : "not run"}
+              </span>
+            </div>
+            {novaLoading && <p className="font-mono text-sm leading-relaxed text-sky-300">[nova] sending optimized context packet only...</p>}
+            {!novaLoading && !novaResult && (
+              <p className="font-mono text-sm leading-relaxed text-white/45">
+                Real Nova will use only the optimized packet. Baseline remains token-estimated so we do not explode context or cost.
+              </p>
+            )}
+            {!novaLoading && novaResult && (
+              <div className="space-y-4">
+                {novaResult.note && <p className="font-mono text-[11px] text-amber-300">{novaResult.note}</p>}
+                <div>
+                  <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-white/35">Root cause</div>
+                  <p className="text-sm leading-relaxed text-white/70">{novaResult.rootCause}</p>
+                </div>
+                <div>
+                  <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-white/35">Patch</div>
+                  <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-emerald-200">{novaResult.patch.after || novaResult.patch.description}</pre>
+                </div>
+                <div className="rounded-xl border border-emerald-300/15 bg-emerald-300/[0.08] p-3 text-sm text-emerald-100/75">
+                  {novaResult.testResult.passed ? "Passed" : "Check required"}: {novaResult.testResult.description}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -309,7 +391,7 @@ function RepoExplorer({
     <div className="grid gap-4 xl:grid-cols-2">
       <div className="rounded-[1.5rem] border border-stone-200 bg-white/70 p-5">
         <div className="text-[10px] uppercase tracking-[0.22em] text-stone-400">mooncart repo</div>
-        <h3 className="serif-fine mt-2 text-3xl font-normal">Scripted fixture tree</h3>
+        <h3 className="serif-fine mt-2 text-3xl font-normal">Live mooncart tree</h3>
         <div className="mt-5 space-y-2">
           {moonshot.files.map(file => (
             <div key={file.path} className={`rounded-2xl border p-3 ${decisionClass(file.decision)}`}>
@@ -348,10 +430,12 @@ export default function LDPage() {
   const [running, setRunning] = useState(false)
   const [visibleSteps, setVisibleSteps] = useState(0)
   const [logs, setLogs] = useState<{ text: string; tone: Tone }[]>([
-    { text: "LD playground ready; stable /demo is untouched", tone: "good" },
-    { text: "try: run scripted-demo or open dataset-lab", tone: "muted" },
+    { text: "Live Demo ready; /demo stable page is untouched", tone: "good" },
+    { text: "try: run live-demo, open dataset-lab, or run nova --real", tone: "muted" },
   ])
   const [taskId, setTaskId] = useState(data.tasks[0].id)
+  const [novaLoading, setNovaLoading] = useState(false)
+  const [novaResult, setNovaResult] = useState<LiveNovaResult | null>(null)
 
   const moonshot = useMemo<MoonshotRunResult>(() => {
     const files = routeContext(demoRepo.files, TASK, TOKEN_BUDGET)
@@ -371,16 +455,16 @@ export default function LDPage() {
     setLogs(current => [...current.slice(-16), line])
   }
 
-  async function runScripted() {
+  async function runLiveEngine() {
     if (running) return
     setTab("engine")
     setRunning(true)
     setVisibleSteps(0)
-    addLog({ text: "$ run scripted-demo", tone: "muted" })
-    for (let i = 0; i < SCRIPTED_LOGS.length; i++) {
+    addLog({ text: "$ run live-demo", tone: "muted" })
+    for (let i = 0; i < LIVE_ENGINE_LOGS.length; i++) {
       await new Promise(resolve => setTimeout(resolve, i === 0 ? 250 : 480))
       setVisibleSteps(i + 1)
-      addLog(SCRIPTED_LOGS[i])
+      addLog(LIVE_ENGINE_LOGS[i])
     }
     setRunning(false)
   }
@@ -397,6 +481,40 @@ export default function LDPage() {
     setRunning(false)
   }
 
+  async function runRealNova() {
+    if (running || novaLoading) return
+    setTab("dataset")
+    setNovaLoading(true)
+    setNovaResult(null)
+    addLog({ text: "$ run nova --real", tone: "muted" })
+    addLog({ text: "[nova] live mode requested", tone: "info" })
+    addLog({ text: "[nova] sending optimized context only; baseline is estimate-only", tone: "good" })
+
+    try {
+      const response = await fetch("/api/nova", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          task: task.title,
+          contextFiles: task.candidateFiles.filter(file => file.decision !== "blocked").map(file => file.path),
+          prompt: buildDatasetPrompt(task),
+        }),
+      })
+      const data = (await response.json()) as LiveNovaResult
+      setNovaResult(data)
+      addLog({
+        text: data.mode === "live"
+          ? `[nova] live response received from ${data.model}`
+          : `[nova] ${data.note ?? "cached/mock response shown"}`,
+        tone: data.mode === "live" ? "good" : "warn",
+      })
+    } catch {
+      addLog({ text: "[nova] request failed in browser; no secret was exposed", tone: "bad" })
+    } finally {
+      setNovaLoading(false)
+    }
+  }
+
   function runCommand(raw: string) {
     const command = raw.trim().toLowerCase()
     if (!command) return
@@ -404,10 +522,11 @@ export default function LDPage() {
 
     if (command.includes("reset")) {
       setLogs([
-        { text: "LD playground reset", tone: "good" },
-        { text: "try: run scripted-demo", tone: "muted" },
+        { text: "Live Demo reset", tone: "good" },
+        { text: "try: run live-demo", tone: "muted" },
       ])
       setVisibleSteps(0)
+      setNovaResult(null)
       setTab("engine")
       return
     }
@@ -426,12 +545,10 @@ export default function LDPage() {
       return
     }
     if (command.includes("nova")) {
-      setTab("dataset")
-      addLog({ text: "$ run nova --real", tone: "muted" })
-      addLog({ text: "[nova] live Nova not wired on LD yet; cached response shown", tone: "warn" })
+      void runRealNova()
       return
     }
-    void runScripted()
+    void runLiveEngine()
   }
 
   return (
@@ -449,10 +566,10 @@ export default function LDPage() {
         <section className="rounded-[2rem] border border-stone-200 bg-[#F7F1DF] p-4 shadow-[0_30px_100px_rgba(46,36,18,0.14)] md:p-6 lg:p-8">
           <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
             <div>
-              <div className="inline-flex rounded-full border border-stone-300 bg-white/65 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-stone-500">LD playground</div>
-              <h1 className="display mt-5 max-w-4xl text-5xl leading-[0.95] text-stone-950 md:text-7xl">Experiment with the real engine shape.</h1>
+              <div className="inline-flex rounded-full border border-stone-300 bg-white/65 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-stone-500">Live Demo</div>
+              <h1 className="display mt-5 max-w-4xl text-5xl leading-[0.95] text-stone-950 md:text-7xl">Run moonshot like a real engine.</h1>
               <p className="mt-5 max-w-2xl text-base leading-relaxed text-stone-600">
-                `/demo` stays judge-safe. This page is where we test terminal commands, Dataset Lab, repo exploration, real-Nova hooks, and deeper run traces without risking the polished path.
+                Type commands, scan a repo slice, optimize context, and call Nova with the optimized packet only. The stable `/demo` remains untouched as a rollback-safe pitch path.
               </p>
             </div>
             <Terminal lines={logs} input={input} setInput={setInput} runCommand={runCommand} running={running} />
@@ -462,7 +579,7 @@ export default function LDPage() {
         <section className="rounded-[1.5rem] border border-stone-200 bg-white/65 p-3">
           <div className="flex flex-wrap gap-2">
             {([
-              ["engine", "Engine Demo"],
+              ["engine", "Live Engine"],
               ["dataset", "Dataset Lab"],
               ["repo", "Repo Explorer"],
               ["trace", "Run Trace"],
@@ -478,8 +595,17 @@ export default function LDPage() {
           </div>
         </section>
 
-        {tab === "engine" && <ScriptedEngine baseline={baseline} moonshot={moonshot} visibleSteps={visibleSteps} />}
-        {tab === "dataset" && <DatasetLab data={data} task={task} setTaskId={setTaskId} />}
+        {tab === "engine" && <LiveEngine baseline={baseline} moonshot={moonshot} visibleSteps={visibleSteps} />}
+        {tab === "dataset" && (
+          <DatasetLab
+            data={data}
+            task={task}
+            setTaskId={setTaskId}
+            onRunNova={() => { void runRealNova() }}
+            novaLoading={novaLoading}
+            novaResult={novaResult}
+          />
+        )}
         {tab === "repo" && <RepoExplorer moonshot={moonshot} task={task} />}
         {tab === "trace" && (
           <section className="rounded-[1.5rem] border border-stone-200 bg-[#111] p-5">

@@ -5,6 +5,7 @@ import { useState } from "react"
 const NAV_LINKS = [
   { label: "Overview",     href: "/#platform" },
   { label: "Demo",         href: "/demo" },
+  { label: "Live",         href: "/ld" },
   { label: "How it works", href: "/#workflow" },
   { label: "Dataset",      href: "/#integrations" },
   { label: "Results",      href: "/#live" },
@@ -47,8 +48,8 @@ export function MobileNav() {
           </div>
 
           <div className="flex items-center gap-2">
-            <a href="/demo" className="text-[11px] px-4 py-2 rounded-xl border border-black/10 text-black/60 hover:text-black hover:border-black/20 hover:bg-black/[0.03] transition-all duration-200 tracking-wide hidden md:block" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
-              RUN DEMO
+            <a href="/ld" className="text-[11px] px-4 py-2 rounded-xl border border-black/10 text-black/60 hover:text-black hover:border-black/20 hover:bg-black/[0.03] transition-all duration-200 tracking-wide hidden md:block" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
+              LIVE DEMO
             </a>
 
             {/* Burger — mobile only */}
@@ -104,8 +105,8 @@ export function MobileNav() {
               </a>
             ))}
             <div className="mt-1 px-2 pb-1">
-              <a href="/demo" onClick={close} className="block w-full text-center text-[11px] px-4 py-2.5 rounded-xl border border-black/10 text-black/60 hover:text-black hover:border-black/20 hover:bg-black/[0.03] transition-all duration-200 tracking-wide" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
-                RUN DEMO
+              <a href="/ld" onClick={close} className="block w-full text-center text-[11px] px-4 py-2.5 rounded-xl border border-black/10 text-black/60 hover:text-black hover:border-black/20 hover:bg-black/[0.03] transition-all duration-200 tracking-wide" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
+                LIVE DEMO
               </a>
             </div>
           </div>

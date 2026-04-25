@@ -67,8 +67,11 @@ export default function AnalysisPage() {
       <nav className="mx-auto mb-8 flex max-w-7xl items-center justify-between rounded-2xl border border-black/[0.07] bg-white/55 px-5 py-3 backdrop-blur-xl">
         <a href="/" className="font-pixel text-xs tracking-[0.25em] text-black/65">moonshot</a>
         <div className="flex items-center gap-4">
+          <a href="/ld" className="hidden text-xs tracking-widest text-black/35 transition hover:text-black/70 sm:block">
+            LD
+          </a>
           <a href="/demo" className="hidden text-xs tracking-widest text-black/35 transition hover:text-black/70 sm:block">
-            Live Demo
+            Stable Demo
           </a>
           <a href="https://github.com/Aaxhirrr/moonshot" target="_blank" rel="noreferrer" className="hidden text-xs tracking-widest text-black/35 transition hover:text-black/70 sm:block">
             GitHub
