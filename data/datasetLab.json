@@ -1,0 +1,128 @@
+{
+  "summary": {
+    "name": "SWE-style archive sample",
+    "tasks": 2,
+    "files": 18,
+    "estimatedTokens": 487320,
+    "languages": ["Go", "Scala"],
+    "repos": ["miekg/dns", "scala-steward/scala-steward"]
+  },
+  "tasks": [
+    {
+      "id": "SWE-GO-1627",
+      "repo": "miekg/dns",
+      "language": "Go",
+      "title": "Fix DNS message handling regression",
+      "issue": "A generated DNS message path fails after a patch changes how records are parsed and serialized. The task includes install logs, test patches, golden patches, and noisy environment artifacts.",
+      "baselineTokens": 193420,
+      "optimizedTokens": 28640,
+      "candidateFiles": [
+        {
+          "path": "dns.go",
+          "tokens": 9800,
+          "score": 0.92,
+          "decision": "selected",
+          "preview": "func (dns *Msg) Pack() ([]byte, error) { /* serialization path */ }"
+        },
+        {
+          "path": "msg.go",
+          "tokens": 12400,
+          "score": 0.88,
+          "decision": "selected",
+          "preview": "func unpackMsgHdr(msg []byte, off int) (Header, int, error) { /* parser */ }"
+        },
+        {
+          "path": "types.go",
+          "tokens": 6440,
+          "score": 0.61,
+          "decision": "selected",
+          "preview": "type RR interface { Header() *RR_Header; String() string }"
+        },
+        {
+          "path": "after_test_patch.txt",
+          "tokens": 34400,
+          "score": 0.42,
+          "decision": "summarized",
+          "preview": "Long test execution log summarized into failure signature and affected assertions."
+        },
+        {
+          "path": "installation.txt",
+          "tokens": 33782,
+          "score": 0.08,
+          "decision": "blocked",
+          "preview": "Install output, dependency download noise, shell environment."
+        },
+        {
+          "path": ".env",
+          "tokens": 80,
+          "score": 0,
+          "decision": "blocked",
+          "preview": "Environment metadata intentionally excluded from public context."
+        }
+      ],
+      "cachedNova": {
+        "rootCause": "The parser and serializer disagreed on record shape after the patch, so the generated fixture failed the round-trip assertion.",
+        "patch": "Guard the record path before packing and normalize the header length during unpack.",
+        "test": "go test ./... passed on the targeted DNS message test."
+      }
+    },
+    {
+      "id": "SWE-SCALA-2884",
+      "repo": "scala-steward/scala-steward",
+      "language": "Scala",
+      "title": "Fix Scala steward update parsing behavior",
+      "issue": "A dependency update workflow fails when parsing a generated XML installation trace and applying the expected golden patch. The useful context is buried under bulky XML logs and IDE artifacts.",
+      "baselineTokens": 293900,
+      "optimizedTokens": 31280,
+      "candidateFiles": [
+        {
+          "path": "modules/core/src/main/scala/org/scalasteward/core/update/Update.scala",
+          "tokens": 10600,
+          "score": 0.9,
+          "decision": "selected",
+          "preview": "final case class Update(groupId: GroupId, artifactId: ArtifactId, version: Version)"
+        },
+        {
+          "path": "modules/core/src/main/scala/org/scalasteward/core/io/ProcessAlg.scala",
+          "tokens": 8800,
+          "score": 0.74,
+          "decision": "selected",
+          "preview": "def exec(command: Nel[String], cwd: Path): F[CmdResult] = ..."
+        },
+        {
+          "path": "golden.patch",
+          "tokens": 985,
+          "score": 0.71,
+          "decision": "selected",
+          "preview": "Expected dependency update diff used as compact task supervision."
+        },
+        {
+          "path": "after_test_patch.xml",
+          "tokens": 449445,
+          "score": 0.44,
+          "decision": "summarized",
+          "preview": "Huge XML test trace summarized to failing command, file path, and assertion."
+        },
+        {
+          "path": ".idea/workspace.xml",
+          "tokens": 18200,
+          "score": 0.02,
+          "decision": "blocked",
+          "preview": "IDE workspace artifact blocked as irrelevant context."
+        },
+        {
+          "path": ".env",
+          "tokens": 24,
+          "score": 0,
+          "decision": "blocked",
+          "preview": "Environment metadata intentionally excluded."
+        }
+      ],
+      "cachedNova": {
+        "rootCause": "The update workflow consumed a noisy XML trace instead of the compact failing command and golden patch context.",
+        "patch": "Route the update parser through the compact patch metadata and preserve the expected version comparison.",
+        "test": "Targeted Scala Steward golden patch test passes in cached run."
+      }
+    }
+  ]
+}
