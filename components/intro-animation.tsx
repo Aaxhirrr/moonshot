@@ -54,8 +54,25 @@ export function IntroAnimation({ onDone }: { onDone: () => void }) {
         }}
       />
 
-      {/* AGENTIC letters */}
-      <div className="absolute inset-0 flex items-center justify-center">
+      {/* Logo + letters container */}
+      <div className="absolute inset-0 flex items-center justify-center gap-6">
+        {/* Logo fades in with letters */}
+        <img
+          src="/logo.png"
+          alt=""
+          className="w-32 h-32 object-contain"
+          style={{
+            opacity: phase === "idle" ? 0 : phase === "in" ? 1 : 0,
+            filter: phase === "idle" ? "blur(36px)" : phase === "in" ? "blur(0px)" : "blur(24px)",
+            transform: phase === "idle" ? "translateY(48px)" : phase === "in" ? "translateY(0)" : "translateY(-20px)",
+            transition: phase === "out"
+              ? `opacity ${LETTER_OUT_DUR}ms cubic-bezier(0.4,0,1,1) 0ms, filter ${LETTER_OUT_DUR}ms cubic-bezier(0.4,0,1,1) 0ms, transform ${LETTER_OUT_DUR}ms cubic-bezier(0.4,0,1,1) 0ms`
+              : phase === "in"
+              ? `opacity ${LETTER_IN_DUR}ms cubic-bezier(0.16,1,0.3,1) 0ms, filter ${LETTER_IN_DUR}ms cubic-bezier(0.16,1,0.3,1) 0ms, transform ${LETTER_IN_DUR}ms cubic-bezier(0.16,1,0.3,1) 0ms`
+              : "none",
+            willChange: "opacity, filter, transform",
+          }}
+        />
         <div className="flex" style={{ gap: "0.06em" }}>
           {LETTERS.map((letter, i) => {
             const inDelay  = i * LETTER_IN_STAGGER

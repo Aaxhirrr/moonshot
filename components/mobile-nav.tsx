@@ -4,7 +4,6 @@ import { useState } from "react"
 
 const NAV_LINKS = [
   { label: "Overview",     href: "/#platform" },
-  { label: "Demo",         href: "/demo" },
   { label: "Live",         href: "/ld" },
   { label: "How it works", href: "/#workflow" },
   { label: "Dataset",      href: "/#integrations" },

@@ -305,3 +305,40 @@ html {
   from { transform: translateX(-33.333%); }
   to   { transform: translateX(0); }
 }
+
+/* Logo entrance — gentle fade + float */
+@keyframes logo-drift {
+  0% { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes subtle-float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+.logo-accent {
+  animation: logo-drift 1.2s cubic-bezier(0.16, 1, 0.3, 1) 2.6s both,
+             subtle-float 4s ease-in-out 3.8s infinite;
+}
+
+/* Page load shimmer — soft accent bar that fades in at top */
+@keyframes load-shimmer {
+  0% { transform: scaleX(0); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; }
+}
+
+.page-load::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(17,17,17,0.3), transparent);
+  transform-origin: left;
+  animation: load-shimmer 2.2s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards;
+  z-index: 999;
+  pointer-events: none;
+}

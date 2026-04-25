@@ -100,7 +100,17 @@ export default function AgenticPage() {
   }
 
   return (
-    <div className="bg-[#F2EFE5] text-[#111] min-h-screen font-sans antialiased">
+    <div className="page-load bg-[#F2EFE5] text-[#111] min-h-screen font-sans antialiased">
+
+      {/* Floating logo accent — top left, visible after intro */}
+      <div className="fixed top-6 left-6 z-40 pointer-events-none">
+        <img
+          src="/logo.png"
+          alt=""
+          aria-hidden="true"
+          className="logo-accent w-20 h-20 object-contain opacity-80"
+        />
+      </div>
 
       {/* ── INTRO ANIMATION ───────────────────────────────────────────────── */}
       <IntroAnimation onDone={handleIntroDone} />
@@ -598,7 +608,6 @@ export default function AgenticPage() {
           <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
             {[
               { label: "Overview",     href: "#platform" },
-              { label: "Demo",         href: "/demo" },
               { label: "How it works", href: "#workflow" },
               { label: "Dataset",      href: "#integrations" },
               { label: "Results",      href: "#live" },

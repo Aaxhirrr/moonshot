@@ -1,11 +1,13 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import datasetLab from "@/data/datasetLab.json"
 import baselineRunJson from "@/data/baselineRun.json"
 import demoRepoJson from "@/data/demoRepo.json"
 import { countAllowedTokens, routeContext } from "@/lib/contextRouter"
 import type { BaselineRunData, DemoRepo, FileDecision, MoonshotRunResult } from "@/types"
+import { LiveInspectionViewer } from "@/components/demo/live-inspection"
+import { ArchitectureDiagram } from "@/components/demo/architecture-diagram"
 
 type LabDecision = "selected" | "blocked" | "summarized"
 
@@ -45,7 +47,7 @@ type LabData = {
   tasks: LabTask[]
 }
 
-type TabKey = "engine" | "dataset" | "repo" | "trace"
+type TabKey = "engine" | "dataset" | "inspection" | "trace"
 type Tone = "muted" | "info" | "good" | "warn" | "bad"
 
 type LiveNovaResult = {
@@ -210,15 +212,17 @@ function LiveEngine({
   baseline,
   moonshot,
   visibleSteps,
+  totalSteps = 8,
 }: {
   baseline: BaselineRunData
   moonshot: MoonshotRunResult
   visibleSteps: number
+  totalSteps?: number
 }) {
   const moonshotFiles = moonshot.files.filter(file => file.decision !== "blocked")
   const visibleMoonshotFiles = moonshotFiles.slice(0, Math.max(0, visibleSteps - 2))
-  const baselineTokens = visibleSteps >= LIVE_ENGINE_LOGS.length ? baseline.totalTokens : baseline.files.slice(0, visibleSteps).reduce((sum, file) => sum + file.tokens, 0)
-  const moonshotTokens = visibleSteps >= LIVE_ENGINE_LOGS.length ? moonshot.tokenCount : visibleMoonshotFiles.reduce((sum, file) => sum + file.tokens, 0)
+  const baselineTokens = visibleSteps >= totalSteps ? baseline.totalTokens : baseline.files.slice(0, visibleSteps).reduce((sum, file) => sum + file.tokens, 0)
+  const moonshotTokens = visibleSteps >= totalSteps ? moonshot.tokenCount : visibleMoonshotFiles.reduce((sum, file) => sum + file.tokens, 0)
 
   return (
     <div className="space-y-4">
@@ -422,8 +426,7 @@ function RepoExplorer({
 }
 
 export default function LDPage() {
-  const data = datasetLab as LabData
-  const baseline = baselineRunJson as BaselineRunData
+  const baselineStatic = baselineRunJson as BaselineRunData
   const demoRepo = demoRepoJson as DemoRepo
   const [tab, setTab] = useState<TabKey>("engine")
   const [input, setInput] = useState("")
@@ -433,27 +436,70 @@ export default function LDPage() {
     { text: "Live Demo ready; target repo Aaxhirrr/swe-bench-context-repo", tone: "good" },
     { text: "try: run live-demo, open dataset-lab, or run nova --real", tone: "muted" },
   ])
-  const [taskId, setTaskId] = useState(data.tasks[0].id)
+  
+  const [labData, setLabData] = useState<LabData>(datasetLab as LabData)
+  const [taskId, setTaskId] = useState(labData.tasks[0].id)
   const [novaLoading, setNovaLoading] = useState(false)
   const [novaResult, setNovaResult] = useState<LiveNovaResult | null>(null)
+  const [isLoaded, setIsLoaded] = useState(false)
 
-  const moonshot = useMemo<MoonshotRunResult>(() => {
+  const [baseline, setBaseline] = useState<BaselineRunData>(baselineStatic)
+  const [moonshot, setMoonshot] = useState<MoonshotRunResult>(() => {
     const files = routeContext(demoRepo.files, TASK, TOKEN_BUDGET)
     const tokenCount = countAllowedTokens(files)
     return {
       tokenCount,
-      reductionPct: ((baseline.totalTokens - tokenCount) / baseline.totalTokens) * 100,
+      reductionPct: ((baselineStatic.totalTokens - tokenCount) / baselineStatic.totalTokens) * 100,
       fileCount: files.filter(file => file.decision !== "blocked").length,
       files,
-      novaOutput: { ...baseline.novaOutput, tokensUsed: tokenCount },
+      novaOutput: { ...baselineStatic.novaOutput, tokensUsed: tokenCount },
     }
-  }, [baseline, demoRepo.files])
+  })
 
-  const task = data.tasks.find(item => item.id === taskId) ?? data.tasks[0]
+  const task = labData.tasks.find(item => item.id === taskId) ?? labData.tasks[0]
+
+  useEffect(() => {
+    fetch("/api/live-run", { method: "POST" })
+      .then(res => res.json())
+      .then(liveData => {
+        if (liveData && liveData.baseline && liveData.moonshot) {
+          setBaseline(liveData.baseline)
+          setMoonshot(liveData.moonshot)
+          setLabData(prev => {
+            const taskObj = prev.tasks[0]
+            const updatedTask = {
+              ...taskObj,
+              baselineTokens: liveData.baseline.totalTokens,
+              optimizedTokens: liveData.moonshot.tokenCount,
+              candidateFiles: liveData.moonshot.files.map((f: FileDecision) => ({
+                path: f.path,
+                tokens: f.tokens,
+                score: f.relevanceScore,
+                decision: f.decision === "allowed" ? "selected" : f.decision,
+                preview: f.decision === "summarized" ? "Summarized to save tokens" : (f.decision === "allowed" ? "High relevance" : "Blocked noise")
+              }))
+            }
+            return {
+              ...prev,
+              summary: {
+                ...prev.summary,
+                estimatedTokens: liveData.baseline.totalTokens,
+                files: liveData.baseline.fileCount
+              },
+              tasks: [updatedTask]
+            }
+          })
+        }
+      })
+      .catch(() => null)
+      .finally(() => setIsLoaded(true))
+  }, [])
 
   function addLog(line: { text: string; tone: Tone }) {
     setLogs(current => [...current.slice(-16), line])
   }
+
+  const [totalSteps, setTotalSteps] = useState(8)
 
   async function runLiveEngine() {
     if (running) return
@@ -461,10 +507,49 @@ export default function LDPage() {
     setRunning(true)
     setVisibleSteps(0)
     addLog({ text: "$ run live-demo", tone: "muted" })
-    for (let i = 0; i < LIVE_ENGINE_LOGS.length; i++) {
+    addLog({ text: "[live] Fetching live GitHub repo Aaxhirrr/swe-bench-context-repo...", tone: "info" })
+    
+    let liveData: { baseline: BaselineRunData; moonshot: MoonshotRunResult } | null = null
+    try {
+      const res = await fetch("/api/live-run", { method: "POST" })
+      if (res.ok) liveData = await res.json()
+    } catch (e) {
+      console.error(e)
+    }
+
+    let logsToPlay = LIVE_ENGINE_LOGS
+
+    if (liveData && liveData.baseline && liveData.moonshot) {
+      setBaseline(liveData.baseline)
+      setMoonshot(liveData.moonshot)
+      
+      const bTokens = liveData.baseline.totalTokens.toLocaleString()
+      const mTokens = liveData.moonshot.tokenCount.toLocaleString()
+      
+      logsToPlay = [
+        { text: "[task] loaded SWE-JS-0001 checkout pricing bug", tone: "info" },
+        { text: "[scan] indexing Aaxhirrr/swe-bench-context-repo from GitHub", tone: "info" },
+        { text: `[token] baseline context from real files: ${bTokens}`, tone: "warn" },
+        { text: "[score] ranked candidate files by path and content", tone: "good" },
+        { text: "[route] blocked dependency locks and noise logs", tone: "good" },
+        { text: "[route] summarized partially relevant files", tone: "good" },
+        { text: `[prompt] generated optimized payload: ${mTokens}`, tone: "good" },
+        { text: "[nova] optimized context ready; real Nova available from Dataset Lab", tone: "good" },
+      ]
+    } else {
+      addLog({ text: "[live] API failed; falling back to mock context", tone: "warn" })
+    }
+    
+    setTotalSteps(logsToPlay.length)
+
+    for (let i = 0; i < logsToPlay.length; i++) {
       await new Promise(resolve => setTimeout(resolve, i === 0 ? 250 : 480))
       setVisibleSteps(i + 1)
-      addLog(LIVE_ENGINE_LOGS[i])
+      addLog(logsToPlay[i])
+    }
+    
+    if (liveData) {
+      addLog({ text: "[live] honest stats: loaded real github repo context", tone: "good" })
     }
     setRunning(false)
   }
@@ -534,10 +619,10 @@ export default function LDPage() {
       void runDatasetLab()
       return
     }
-    if (command.includes("repo")) {
-      setTab("repo")
+    if (command.includes("inspection") || command.includes("repo") || command.includes("packet")) {
+      setTab("inspection")
       addLog({ text: "$ scan repo", tone: "muted" })
-      addLog({ text: "[view] repo explorer opened", tone: "info" })
+      addLog({ text: "[view] live inspection opened", tone: "info" })
       return
     }
     if (command.includes("trace")) {
@@ -551,12 +636,21 @@ export default function LDPage() {
     void runLiveEngine()
   }
 
+  if (!isLoaded) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#F2EFE5] px-4 py-6 text-[#111]">
+        <div className="animate-pulse font-mono text-[11px] uppercase tracking-[0.2em] text-black/40">
+          Fetching live GitHub repo Aaxhirrr/swe-bench-context-repo...
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen bg-[#F2EFE5] px-4 py-6 text-[#111] md:px-8 lg:px-12">
       <nav className="mx-auto mb-8 flex max-w-7xl items-center justify-between rounded-2xl border border-black/[0.07] bg-white/55 px-5 py-3 backdrop-blur-xl">
         <a href="/" className="font-pixel text-xs tracking-[0.25em] text-black/65">moonshot</a>
         <div className="flex items-center gap-4">
-          <a href="/demo" className="hidden text-xs tracking-widest text-black/35 transition hover:text-black/70 sm:block">Stable Demo</a>
           <a href="/analysis" className="hidden text-xs tracking-widest text-black/35 transition hover:text-black/70 sm:block">Analysis</a>
           <a href="/" className="rounded-xl border border-black/10 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-black/55 transition hover:bg-black/[0.03]">Home</a>
         </div>
@@ -581,7 +675,7 @@ export default function LDPage() {
             {([
               ["engine", "Live Engine"],
               ["dataset", "Dataset Lab"],
-              ["repo", "Repo Explorer"],
+              ["inspection", "Live Inspection"],
               ["trace", "Run Trace"],
             ] as const).map(([key, label]) => (
               <button
@@ -595,10 +689,10 @@ export default function LDPage() {
           </div>
         </section>
 
-        {tab === "engine" && <LiveEngine baseline={baseline} moonshot={moonshot} visibleSteps={visibleSteps} />}
+        {tab === "engine" && <LiveEngine baseline={baseline} moonshot={moonshot} visibleSteps={visibleSteps} totalSteps={totalSteps} />}
         {tab === "dataset" && (
           <DatasetLab
-            data={data}
+            data={labData}
             task={task}
             setTaskId={setTaskId}
             onRunNova={() => { void runRealNova() }}
@@ -606,7 +700,12 @@ export default function LDPage() {
             novaResult={novaResult}
           />
         )}
-        {tab === "repo" && <RepoExplorer moonshot={moonshot} task={task} />}
+        {tab === "inspection" && (
+          <div className="space-y-6">
+            <ArchitectureDiagram />
+            <LiveInspectionViewer baseline={baseline} moonshot={moonshot} />
+          </div>
+        )}
         {tab === "trace" && (
           <section className="rounded-[1.5rem] border border-stone-200 bg-[#111] p-5">
             <div className="mb-4 text-[10px] uppercase tracking-[0.22em] text-white/35">Run trace</div>

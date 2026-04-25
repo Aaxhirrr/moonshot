@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { DemoComparison } from "@/components/demo/demo-comparison"
 import baselineRunJson from "@/data/baselineRun.json"
 import demoRepoJson from "@/data/demoRepo.json"
@@ -18,31 +18,35 @@ function formatFilePreview(paths: string[]) {
 }
 
 export default function AnalysisPage() {
-  const baselineFixture = baselineRunJson as BaselineRunData
+  const [baselineFixture, setBaselineFixture] = useState<BaselineRunData>(baselineRunJson as BaselineRunData)
+  const [moonshotRun, setMoonshotRun] = useState<MoonshotRunResult | null>(null)
+  const [optimizedPrompt, setOptimizedPrompt] = useState<string>("")
   const demoRepo = demoRepoJson as DemoRepo
 
-  const moonshotRun = useMemo<MoonshotRunResult>(() => {
-    const decisions = routeContext(demoRepo.files, TASK, TOKEN_BUDGET)
-    const tokenCount = countAllowedTokens(decisions)
-    const reductionPct = baselineFixture.totalTokens > 0
-      ? ((baselineFixture.totalTokens - tokenCount) / baselineFixture.totalTokens) * 100
-      : 0
-
-    return {
-      tokenCount,
-      reductionPct,
-      fileCount: decisions.filter(d => d.decision === "allowed" || d.decision === "summarized").length,
-      files: decisions,
-      novaOutput: {
-        ...baselineFixture.novaOutput,
-        tokensUsed: tokenCount,
-      },
-    }
-  }, [baselineFixture, demoRepo.files])
+  useEffect(() => {
+    fetch("/api/live-run", { method: "POST" })
+      .then(res => res.json())
+      .then(liveData => {
+        if (liveData && liveData.baseline && liveData.moonshot) {
+          setBaselineFixture(liveData.baseline)
+          setMoonshotRun(liveData.moonshot)
+          if (liveData.prompt) {
+            setOptimizedPrompt(liveData.prompt)
+          }
+        }
+      })
+      .catch(() => null)
+  }, [])
 
   const contextSnapshots = useMemo<{ before: ContextSnapshot; after: ContextSnapshot }>(() => {
     const baselineFiles = baselineFixture.files.map(file => file.path)
-    const optimizedFiles = moonshotRun.files
+    
+    // Fallback to demo calculation if moonshotRun is not loaded yet
+    const fallbackDecisions = routeContext(demoRepo.files, TASK, TOKEN_BUDGET)
+    const activeFiles = moonshotRun ? moonshotRun.files : fallbackDecisions
+    const tokenCount = moonshotRun ? moonshotRun.tokenCount : countAllowedTokens(fallbackDecisions)
+    
+    const optimizedFiles = activeFiles
       .filter(file => file.decision === "allowed" || file.decision === "summarized")
       .map(file => file.path)
 
@@ -55,12 +59,22 @@ export default function AnalysisPage() {
       },
       after: {
         label: "moonshot Context",
-        tokenCount: moonshotRun.tokenCount,
+        tokenCount: tokenCount,
         files: optimizedFiles,
-        preview: buildPrompt(TASK, moonshotRun.files, demoRepo.files).slice(0, 900),
+        preview: optimizedPrompt || buildPrompt(TASK, fallbackDecisions, demoRepo.files).slice(0, 900),
       },
     }
-  }, [baselineFixture, demoRepo.files, moonshotRun])
+  }, [baselineFixture, demoRepo.files, moonshotRun, optimizedPrompt])
+
+  if (!moonshotRun) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#F2EFE5] px-4 py-6 text-[#111]">
+        <div className="animate-pulse font-mono text-[11px] uppercase tracking-[0.2em] text-black/40">
+          Fetching live GitHub repo Aaxhirrr/swe-bench-context-repo...
+        </div>
+      </main>
+    )
+  }
 
   return (
     <main className="min-h-screen bg-[#F2EFE5] px-4 py-6 text-[#111] md:px-8 lg:px-12">
@@ -69,9 +83,6 @@ export default function AnalysisPage() {
         <div className="flex items-center gap-4">
           <a href="/ld" className="hidden text-xs tracking-widest text-black/35 transition hover:text-black/70 sm:block">
             LD
-          </a>
-          <a href="/demo" className="hidden text-xs tracking-widest text-black/35 transition hover:text-black/70 sm:block">
-            Stable Demo
           </a>
           <a href="https://github.com/Aaxhirrr/moonshot" target="_blank" rel="noreferrer" className="hidden text-xs tracking-widest text-black/35 transition hover:text-black/70 sm:block">
             GitHub
@@ -88,7 +99,7 @@ export default function AnalysisPage() {
           baselineFixture={baselineFixture}
           baselineResult={baselineFixture}
           moonshotResult={moonshotRun}
-          projectedMoonshotTokens={moonshotRun.tokenCount}
+          projectedMoonshotTokens={moonshotRun ? moonshotRun.tokenCount : 17920}
           isRunningBaseline={false}
           isRunningMoonshot={false}
           activeStage="output"
