@@ -65,6 +65,7 @@ export function IntroAnimation({ onDone }: { onDone: () => void }) {
             opacity: phase === "idle" ? 0 : phase === "in" ? 1 : 0,
             filter: phase === "idle" ? "blur(36px)" : phase === "in" ? "blur(0px)" : "blur(24px)",
             transform: phase === "idle" ? "translateY(48px)" : phase === "in" ? "translateY(0)" : "translateY(-20px)",
+            transformOrigin: "center",
             transition: phase === "out"
               ? `opacity ${LETTER_OUT_DUR}ms cubic-bezier(0.4,0,1,1) 0ms, filter ${LETTER_OUT_DUR}ms cubic-bezier(0.4,0,1,1) 0ms, transform ${LETTER_OUT_DUR}ms cubic-bezier(0.4,0,1,1) 0ms`
               : phase === "in"
@@ -111,6 +112,7 @@ export function IntroAnimation({ onDone }: { onDone: () => void }) {
                   opacity,
                   filter: `blur(${blur}px)`,
                   transform: `translateY(${translateY}px)`,
+                  transformOrigin: "center",
                   transition,
                   willChange: "opacity, filter, transform",
                 }}
