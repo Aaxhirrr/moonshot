@@ -18,34 +18,43 @@ function formatFilePreview(paths: string[]) {
 }
 
 export default function AnalysisPage() {
+  const [selectedDataset, setSelectedDataset] = useState<"standard" | "enterprise">("standard")
   const [baselineFixture, setBaselineFixture] = useState<BaselineRunData>(baselineRunJson as BaselineRunData)
   const [moonshotRun, setMoonshotRun] = useState<MoonshotRunResult | null>(null)
   const [optimizedPrompt, setOptimizedPrompt] = useState<string>("")
+  const [loading, setLoading] = useState(true)
   const demoRepo = demoRepoJson as DemoRepo
 
   useEffect(() => {
-    fetch("/api/live-run", { method: "POST" })
+    setLoading(true)
+    setMoonshotRun(null)
+    setBaselineFixture(baselineRunJson as BaselineRunData)
+    setOptimizedPrompt("")
+
+    fetch("/api/live-run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dataset: selectedDataset }),
+    })
       .then(res => res.json())
       .then(liveData => {
         if (liveData && liveData.baseline && liveData.moonshot) {
           setBaselineFixture(liveData.baseline)
           setMoonshotRun(liveData.moonshot)
-          if (liveData.prompt) {
-            setOptimizedPrompt(liveData.prompt)
-          }
+          if (liveData.prompt) setOptimizedPrompt(liveData.prompt)
         }
       })
       .catch(() => null)
-  }, [])
+      .finally(() => setLoading(false))
+  }, [selectedDataset])
 
   const contextSnapshots = useMemo<{ before: ContextSnapshot; after: ContextSnapshot }>(() => {
     const baselineFiles = baselineFixture.files.map(file => file.path)
-    
-    // Fallback to demo calculation if moonshotRun is not loaded yet
+
     const fallbackDecisions = routeContext(demoRepo.files, TASK, TOKEN_BUDGET)
     const activeFiles = moonshotRun ? moonshotRun.files : fallbackDecisions
     const tokenCount = moonshotRun ? moonshotRun.tokenCount : countAllowedTokens(fallbackDecisions)
-    
+
     const optimizedFiles = activeFiles
       .filter(file => file.decision === "allowed" || file.decision === "summarized")
       .map(file => file.path)
@@ -66,55 +75,93 @@ export default function AnalysisPage() {
     }
   }, [baselineFixture, demoRepo.files, moonshotRun, optimizedPrompt])
 
-  if (!moonshotRun) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-[#F2EFE5] px-4 py-6 text-[#111]">
-        <div className="animate-pulse font-mono text-[11px] uppercase tracking-[0.2em] text-black/40">
-          Scanning local dataset (medusajs/medusa)...
-        </div>
-      </main>
-    )
-  }
-
   return (
     <main className="min-h-screen bg-[#F2EFE5] px-4 py-6 text-[#111] md:px-8 lg:px-12">
       <nav className="mx-auto mb-8 flex max-w-7xl items-center justify-between rounded-2xl border border-black/[0.07] bg-white/55 px-5 py-3 backdrop-blur-xl">
         <a href="/" className="font-pixel text-xs tracking-[0.25em] text-black/65">moonshot</a>
         <div className="flex items-center gap-4">
-          <a href="/ld" className="hidden text-xs tracking-widest text-black/35 transition hover:text-black/70 sm:block">
-            LD
-          </a>
-          <a href="https://github.com/Aaxhirrr/moonshot" target="_blank" rel="noreferrer" className="hidden text-xs tracking-widest text-black/35 transition hover:text-black/70 sm:block">
-            GitHub
-          </a>
-          <a href="/" className="rounded-xl border border-black/10 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-black/55 transition hover:bg-black/[0.03]">
-            Home
-          </a>
+          <a href="/ld" className="hidden text-xs tracking-widest text-black/35 transition hover:text-black/70 sm:block">LD</a>
+          <a href="https://github.com/Aaxhirrr/moonshot" target="_blank" rel="noreferrer" className="hidden text-xs tracking-widest text-black/35 transition hover:text-black/70 sm:block">GitHub</a>
+          <a href="/" className="rounded-xl border border-black/10 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-black/55 transition hover:bg-black/[0.03]">Home</a>
         </div>
       </nav>
 
-      <div className="mx-auto max-w-7xl">
-        <DemoComparison
-          task={TASK}
-          baselineFixture={baselineFixture}
-          baselineResult={baselineFixture}
-          moonshotResult={moonshotRun}
-          projectedMoonshotTokens={moonshotRun ? moonshotRun.tokenCount : 17920}
-          isRunningBaseline={false}
-          isRunningMoonshot={false}
-          activeStage="output"
-          beforeContext={contextSnapshots.before}
-          afterContext={contextSnapshots.after}
-          onRunBaseline={() => undefined}
-          onRunMoonshot={() => undefined}
-          onRunFullDemo={() => undefined}
-          analysisOnly
-        />
+      {/* Dataset picker */}
+      <div className="mx-auto mb-6 max-w-7xl">
+        <div className="mb-3 text-[10px] uppercase tracking-[0.22em] text-black/30">Analysis dataset</div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button
+            onClick={() => setSelectedDataset("standard")}
+            className={`rounded-2xl border p-4 text-left transition-all duration-200 ${
+              selectedDataset === "standard"
+                ? "border-stone-900 bg-stone-950 text-white shadow-lg"
+                : "border-stone-200 bg-white text-stone-700 hover:border-stone-400"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className={`font-mono text-[10px] uppercase tracking-[0.2em] ${selectedDataset === "standard" ? "text-emerald-400" : "text-stone-400"}`}>Standard</div>
+              {selectedDataset === "standard" && <div className="h-2 w-2 rounded-full bg-emerald-400" />}
+            </div>
+            <div className={`mt-2 font-mono text-sm font-medium ${selectedDataset === "standard" ? "text-white" : "text-stone-800"}`}>swe-bench-context-repo</div>
+            <div className={`mt-1 text-xs leading-relaxed ${selectedDataset === "standard" ? "text-white/50" : "text-stone-400"}`}>
+              ~14 files · ~1,300 tokens baseline · Fetched live from GitHub
+            </div>
+          </button>
 
-        <section className="mt-8 rounded-2xl border border-black/[0.07] bg-white/45 p-5 text-sm leading-relaxed text-black/40">
-          Dataset note: this public demo commits sanitized mooncart fixtures only. The raw hackathon archive remains local and ignored because it contains environment files, IDE caches, and bulky source artifacts.
-        </section>
+          <button
+            onClick={() => setSelectedDataset("enterprise")}
+            className={`rounded-2xl border p-4 text-left transition-all duration-200 ${
+              selectedDataset === "enterprise"
+                ? "border-emerald-700 bg-emerald-950 text-white shadow-lg"
+                : "border-stone-200 bg-white text-stone-700 hover:border-emerald-500"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className={`font-mono text-[10px] uppercase tracking-[0.2em] ${selectedDataset === "enterprise" ? "text-emerald-400" : "text-stone-400"}`}>Enterprise</div>
+              {selectedDataset === "enterprise" && <div className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />}
+            </div>
+            <div className={`mt-2 font-mono text-sm font-medium ${selectedDataset === "enterprise" ? "text-white" : "text-stone-800"}`}>medusajs/medusa</div>
+            <div className={`mt-1 text-xs leading-relaxed ${selectedDataset === "enterprise" ? "text-white/50" : "text-stone-400"}`}>
+              8,175 files · 7.5M tokens baseline · 99.7% reduction
+            </div>
+          </button>
+        </div>
       </div>
+
+      {loading || !moonshotRun ? (
+        <div className="flex min-h-[400px] items-center justify-center">
+          <div className="animate-pulse font-mono text-[11px] uppercase tracking-[0.2em] text-black/40">
+            {selectedDataset === "enterprise"
+              ? "Scanning medusajs/medusa dataset..."
+              : "Scanning swe-bench-context-repo..."}
+          </div>
+        </div>
+      ) : (
+        <div className="mx-auto max-w-7xl">
+          <DemoComparison
+            task={TASK}
+            baselineFixture={baselineFixture}
+            baselineResult={baselineFixture}
+            moonshotResult={moonshotRun}
+            projectedMoonshotTokens={moonshotRun.tokenCount}
+            isRunningBaseline={false}
+            isRunningMoonshot={false}
+            activeStage="output"
+            beforeContext={contextSnapshots.before}
+            afterContext={contextSnapshots.after}
+            onRunBaseline={() => undefined}
+            onRunMoonshot={() => undefined}
+            onRunFullDemo={() => undefined}
+            analysisOnly
+          />
+
+          <section className="mt-8 rounded-2xl border border-black/[0.07] bg-white/45 p-5 text-sm leading-relaxed text-black/40">
+            {selectedDataset === "enterprise"
+              ? "Enterprise dataset: medusajs/medusa scanned locally (8,175 source files). File stats from real disk scan; top relevant files fetched from public GitHub for the Nova prompt. The 7.5M token baseline is computed from actual file sizes."
+              : "Standard dataset: sanitized mooncart fixtures from Aaxhirrr/swe-bench-context-repo, fetched live from GitHub. The raw hackathon archive remains local and gitignored."}
+          </section>
+        </div>
+      )}
     </main>
   )
 }
