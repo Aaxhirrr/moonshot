@@ -1,6 +1,6 @@
 # moonshot
 
-moonshot is a scripted hackathon demo for showing the economic cost of wasted AI context in large-codebase developer workflows.
+moonshot is a hackathon demo for showing the economic cost of wasted AI context in large-codebase developer workflows.
 
 The core demo compares two runs of the same task:
 
