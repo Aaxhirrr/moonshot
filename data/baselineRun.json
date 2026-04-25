@@ -1,0 +1,39 @@
+{
+  "task": "Fix checkout bug where discounts are applied after tax instead of before tax.",
+  "totalTokens": 86240,
+  "irrelevantPct": 84,
+  "fileCount": 14,
+  "files": [
+    { "path": "package-lock.json", "tokens": 24800, "category": "noise", "size": 99200 },
+    { "path": "logs/checkout-debug.log", "tokens": 12000, "category": "noise", "size": 48000 },
+    { "path": "src/promotions/coupon-rules.ts", "tokens": 7900, "category": "irrelevant", "size": 31600 },
+    { "path": "src/checkout/cart.ts", "tokens": 6200, "category": "relevant", "size": 24800 },
+    { "path": "src/auth/login.ts", "tokens": 5100, "category": "irrelevant", "size": 20400 },
+    { "path": "src/admin/dashboard.tsx", "tokens": 4300, "category": "irrelevant", "size": 17200 },
+    { "path": "docs/legacy-checkout.md", "tokens": 4200, "category": "noise", "size": 16800 },
+    { "path": "src/checkout/discounts.ts", "tokens": 4100, "category": "relevant", "size": 16400 },
+    { "path": "src/payments/stripe.ts", "tokens": 3900, "category": "irrelevant", "size": 15600 },
+    { "path": "src/checkout/taxes.ts", "tokens": 3600, "category": "relevant", "size": 14400 },
+    { "path": "src/inventory/sync.ts", "tokens": 3500, "category": "irrelevant", "size": 14000 },
+    { "path": "src/generated/graphql.ts", "tokens": 2820, "category": "noise", "size": 11280 },
+    { "path": "src/checkout/cart.test.ts", "tokens": 2600, "category": "relevant", "size": 10400 },
+    { "path": "src/types/order.ts", "tokens": 1220, "category": "relevant", "size": 4880 }
+  ],
+  "novaOutput": {
+    "rootCause": "Discount was applied to the post-tax total instead of the pre-tax subtotal. In src/checkout/cart.ts, the tax multiplier is applied first, then the discount is subtracted from the inflated total.",
+    "patch": {
+      "file": "src/checkout/cart.ts",
+      "before": "// Apply tax first, then discount (BUG)\nconst total = subtotal * (1 + taxRate)\nconst discounted = total - discount",
+      "after": "// Apply discount first, then tax (FIXED)\nconst discounted = subtotal - discount\nconst total = discounted * (1 + taxRate)",
+      "description": "Calculate discounted subtotal first, then apply tax to the discounted amount."
+    },
+    "testResult": {
+      "description": "subtotal 100, discount 20, tax 10% should equal 88",
+      "input": { "subtotal": 100, "discount": 20, "taxRate": 0.1 },
+      "expected": 88,
+      "actual": 88,
+      "passed": true
+    },
+    "tokensUsed": 86240
+  }
+}
