@@ -444,56 +444,24 @@ export default function LDPage() {
   const [isLoaded, setIsLoaded] = useState(false)
   const [selectedDataset, setSelectedDataset] = useState<"standard" | "enterprise">("standard")
 
-  const [baseline, setBaseline] = useState<BaselineRunData>(baselineStatic)
-  const [moonshot, setMoonshot] = useState<MoonshotRunResult>(() => {
-    const files = routeContext(demoRepo.files, TASK, TOKEN_BUDGET)
-    const tokenCount = countAllowedTokens(files)
-    return {
-      tokenCount,
-      reductionPct: ((baselineStatic.totalTokens - tokenCount) / baselineStatic.totalTokens) * 100,
-      fileCount: files.filter(file => file.decision !== "blocked").length,
-      files,
-      novaOutput: { ...baselineStatic.novaOutput, tokensUsed: tokenCount },
-    }
-  })
+  const [baseline, setBaseline] = useState<BaselineRunData | null>(null)
+  const [moonshot, setMoonshot] = useState<MoonshotRunResult | null>(null)
+  const [hasRun, setHasRun] = useState(false)
 
   const task = labData.tasks.find(item => item.id === taskId) ?? labData.tasks[0]
 
+  // No auto-fetch on mount — data only populates after the user runs the engine
   useEffect(() => {
-    fetch("/api/live-run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataset: selectedDataset }) })
-      .then(res => res.json())
-      .then(liveData => {
-        if (liveData && liveData.baseline && liveData.moonshot) {
-          setBaseline(liveData.baseline)
-          setMoonshot(liveData.moonshot)
-          setLabData(prev => {
-            const taskObj = prev.tasks[0]
-            const updatedTask = {
-              ...taskObj,
-              baselineTokens: liveData.baseline.totalTokens,
-              optimizedTokens: liveData.moonshot.tokenCount,
-              candidateFiles: liveData.moonshot.files.map((f: FileDecision) => ({
-                path: f.path,
-                tokens: f.tokens,
-                score: f.relevanceScore,
-                decision: f.decision === "allowed" ? "selected" : f.decision,
-                preview: f.decision === "summarized" ? "Summarized to save tokens" : (f.decision === "allowed" ? "High relevance" : "Blocked noise")
-              }))
-            }
-            return {
-              ...prev,
-              summary: {
-                ...prev.summary,
-                estimatedTokens: liveData.baseline.totalTokens,
-                files: liveData.baseline.fileCount
-              },
-              tasks: [updatedTask]
-            }
-          })
-        }
-      })
-      .catch(() => null)
-      .finally(() => setIsLoaded(true))
+    // Clear results when the dataset choice changes so stale data never shows
+    setBaseline(null)
+    setMoonshot(null)
+    setHasRun(false)
+    setLabData(datasetLab as LabData)
+    setNovaResult(null)
+  }, [selectedDataset])
+
+  useEffect(() => {
+    setIsLoaded(true)
   }, [])
 
   function addLog(line: { text: string; tone: Tone }) {
@@ -561,7 +529,35 @@ export default function LDPage() {
     }
     
     if (liveData) {
-      addLog({ text: "[live] honest stats: loaded real github repo context", tone: "good" })
+      addLog({ text: `[done] honest stats from ${selectedDataset} dataset`, tone: "good" })
+      // Update Dataset Lab with real data from this run
+      setHasRun(true)
+      if (liveData.baseline && liveData.moonshot) {
+        setLabData(prev => {
+          const taskObj = prev.tasks[0]
+          const updatedTask = {
+            ...taskObj,
+            baselineTokens: liveData.baseline.totalTokens,
+            optimizedTokens: liveData.moonshot.tokenCount,
+            candidateFiles: liveData.moonshot.files.map((f: FileDecision) => ({
+              path: f.path,
+              tokens: f.tokens,
+              score: f.relevanceScore,
+              decision: f.decision === "allowed" ? "selected" : f.decision,
+              preview: f.decision === "summarized" ? "Summarized to save tokens" : (f.decision === "allowed" ? "High relevance" : "Blocked noise")
+            }))
+          }
+          return {
+            ...prev,
+            summary: {
+              ...prev.summary,
+              estimatedTokens: liveData.baseline.totalTokens,
+              files: liveData.baseline.fileCount
+            },
+            tasks: [updatedTask]
+          }
+        })
+      }
     }
     setRunning(false)
   }
@@ -743,22 +739,52 @@ export default function LDPage() {
           </div>
         </section>
 
-        {tab === "engine" && <LiveEngine baseline={baseline} moonshot={moonshot} visibleSteps={visibleSteps} totalSteps={totalSteps} />}
+        {tab === "engine" && (
+          baseline && moonshot
+            ? <LiveEngine baseline={baseline} moonshot={moonshot} visibleSteps={visibleSteps} totalSteps={totalSteps} />
+            : (
+              <div className="flex min-h-[260px] flex-col items-center justify-center rounded-[1.5rem] border border-dashed border-stone-300 bg-white/40 text-center">
+                <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-stone-400">No data yet</div>
+                <p className="mt-2 text-sm text-stone-500">Choose a dataset above, then type <span className="font-mono">run live-demo</span> in the terminal.</p>
+              </div>
+            )
+        )}
         {tab === "dataset" && (
-          <DatasetLab
-            data={labData}
-            task={task}
-            setTaskId={setTaskId}
-            onRunNova={() => { void runRealNova() }}
-            novaLoading={novaLoading}
-            novaResult={novaResult}
-          />
+          hasRun
+            ? (
+              <DatasetLab
+                data={labData}
+                task={task}
+                setTaskId={setTaskId}
+                onRunNova={() => { void runRealNova() }}
+                novaLoading={novaLoading}
+                novaResult={novaResult}
+              />
+            )
+            : (
+              <div className="flex min-h-[260px] flex-col items-center justify-center rounded-[1.5rem] border border-dashed border-stone-300 bg-white/40 text-center">
+                <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-stone-400">No data yet</div>
+                <p className="mt-2 text-sm text-stone-500">Run the live engine first to populate the Dataset Lab with real stats.</p>
+              </div>
+            )
         )}
         {tab === "inspection" && (
-          <div className="space-y-6">
-            <ArchitectureDiagram />
-            <LiveInspectionViewer baseline={baseline} moonshot={moonshot} />
-          </div>
+          baseline && moonshot
+            ? (
+              <div className="space-y-6">
+                <ArchitectureDiagram />
+                <LiveInspectionViewer baseline={baseline} moonshot={moonshot} />
+              </div>
+            )
+            : (
+              <div className="space-y-6">
+                <ArchitectureDiagram />
+                <div className="flex min-h-[200px] flex-col items-center justify-center rounded-[1.5rem] border border-dashed border-stone-300 bg-white/40 text-center">
+                  <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-stone-400">No inspection data yet</div>
+                  <p className="mt-2 text-sm text-stone-500">Run the live engine to inspect what moonshot sends to Nova.</p>
+                </div>
+              </div>
+            )
         )}
         {tab === "trace" && (
           <section className="rounded-[1.5rem] border border-stone-200 bg-[#111] p-5">
