@@ -21,6 +21,7 @@ type DemoComparisonProps = {
   onRunBaseline: () => void
   onRunMoonshot: () => void
   onRunFullDemo: () => void
+  analysisOnly?: boolean
 }
 
 function formatTokens(tokens: number) {
@@ -61,6 +62,7 @@ export function DemoComparison({
   onRunBaseline,
   onRunMoonshot,
   onRunFullDemo,
+  analysisOnly = false,
 }: DemoComparisonProps) {
   const baselineTokens = baselineFixture.totalTokens
   const moonshotTokens = moonshotResult?.tokenCount ?? projectedMoonshotTokens
@@ -88,29 +90,48 @@ export function DemoComparison({
           <div className="rounded-2xl border border-black/[0.07] bg-white/70 p-5">
             <div className="text-[10px] uppercase tracking-[0.22em] text-black/35">Developer task</div>
             <p className="mt-3 text-lg leading-relaxed text-black/70">{task}</p>
-            <div className="mt-5 grid gap-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-              <button
-                onClick={onRunBaseline}
-                disabled={isRunningBaseline || isRunningMoonshot}
-                className="rounded-xl bg-[#111] px-4 py-3 text-[11px] font-medium uppercase tracking-[0.2em] text-white transition hover:bg-[#333] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isRunningBaseline ? "Running" : "Run baseline"}
-              </button>
-              <button
-                onClick={onRunMoonshot}
-                disabled={!canRunMoonshot}
-                className="rounded-xl border border-black/10 px-4 py-3 text-[11px] font-medium uppercase tracking-[0.2em] text-black/65 transition hover:border-black/20 hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {isRunningMoonshot ? "Routing" : "Run moonshot"}
-              </button>
-              <button
-                onClick={onRunFullDemo}
-                disabled={isRunningBaseline || isRunningMoonshot}
-                className="rounded-xl border border-emerald-700/15 bg-emerald-50 px-4 py-3 text-[11px] font-medium uppercase tracking-[0.2em] text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Run all
-              </button>
-            </div>
+            {analysisOnly ? (
+              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                <a
+                  href="/demo"
+                  className="rounded-xl bg-[#111] px-4 py-3 text-center text-[11px] font-medium uppercase tracking-[0.2em] text-white transition hover:bg-[#333]"
+                >
+                  Run live demo
+                </a>
+                <a
+                  href="https://github.com/Aaxhirrr/moonshot"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-xl border border-black/10 px-4 py-3 text-center text-[11px] font-medium uppercase tracking-[0.2em] text-black/65 transition hover:border-black/20 hover:bg-black/[0.03]"
+                >
+                  GitHub
+                </a>
+              </div>
+            ) : (
+              <div className="mt-5 grid gap-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+                <button
+                  onClick={onRunBaseline}
+                  disabled={isRunningBaseline || isRunningMoonshot}
+                  className="rounded-xl bg-[#111] px-4 py-3 text-[11px] font-medium uppercase tracking-[0.2em] text-white transition hover:bg-[#333] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isRunningBaseline ? "Running" : "Run baseline"}
+                </button>
+                <button
+                  onClick={onRunMoonshot}
+                  disabled={!canRunMoonshot}
+                  className="rounded-xl border border-black/10 px-4 py-3 text-[11px] font-medium uppercase tracking-[0.2em] text-black/65 transition hover:border-black/20 hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {isRunningMoonshot ? "Routing" : "Run moonshot"}
+                </button>
+                <button
+                  onClick={onRunFullDemo}
+                  disabled={isRunningBaseline || isRunningMoonshot}
+                  className="rounded-xl border border-emerald-700/15 bg-emerald-50 px-4 py-3 text-[11px] font-medium uppercase tracking-[0.2em] text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Run all
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </section>
