@@ -1,299 +1,584 @@
 "use client"
 
-import type { BaselineRunData, MoonshotRunResult, PipelineStage } from "@/types"
+import { useMemo, useState } from "react"
+import type { BaselineRunData, FileDecision, FileEntry, MoonshotRunResult } from "@/types"
 
 type LiveEngineRunProps = {
   task: string
   baselineFixture: BaselineRunData
-  baselineResult: BaselineRunData | null
-  moonshotResult: MoonshotRunResult | null
-  isRunningBaseline: boolean
-  isRunningMoonshot: boolean
-  activeStage?: PipelineStage
-  onRunFullDemo: () => void
-  onRunBaseline: () => void
-  onRunMoonshot: () => void
+  moonshotRun: MoonshotRunResult
 }
 
-const STAGE_LABELS: Record<PipelineStage, string> = {
-  "task-input": "Task accepted",
-  "repo-scanner": "Scanning repo",
-  "token-estimator": "Estimating tokens",
-  "relevance-scorer": "Ranking files",
-  "context-router": "Routing context",
-  "prompt-builder": "Building packet",
-  "nova-api": "Calling Nova",
-  output: "Patch ready",
+type RunMode = "baseline" | "moonshot" | "compare"
+type TabKey = "repo" | "flamegraph" | "packet" | "patch"
+type Tone = "muted" | "info" | "good" | "warn" | "bad"
+
+type TerminalLine = {
+  text: string
+  tone?: Tone
 }
 
-const BASELINE_STEPS = [
-  { label: "Collect repo glob", detail: "mooncart/**", tone: "neutral" },
-  { label: "Pack full context", detail: "14 files bundled", tone: "warn" },
-  { label: "Send to Nova", detail: "86,240 input tokens", tone: "bad" },
-  { label: "Patch returned", detail: "Correct fix, expensive context", tone: "neutral" },
-] as const
+type ScriptStep = {
+  label: string
+  detail: string
+  log: string
+  tone: Tone
+}
 
-const MOONSHOT_STEPS = [
-  { label: "Scan mooncart", detail: "14 files discovered", tone: "neutral" },
-  { label: "Score relevance", detail: "checkout files rise to top", tone: "good" },
-  { label: "Block noise", detail: "lockfile, logs, auth, admin", tone: "good" },
-  { label: "Summarize partials", detail: "coupon rules compressed", tone: "good" },
-  { label: "Send lean packet", detail: "17,920 input tokens", tone: "good" },
-] as const
+const BASELINE_SCRIPT: ScriptStep[] = [
+  { label: "Load task", detail: "checkout discount bug", log: "[task] loaded checkout discount bug", tone: "info" },
+  { label: "Read repo glob", detail: "mooncart/**", log: "[baseline] reading mooncart/**", tone: "muted" },
+  { label: "Pack lockfile", detail: "package-lock.json included", log: "[baseline] package-lock.json added: 24,800 tokens", tone: "bad" },
+  { label: "Pack logs", detail: "debug traces included", log: "[baseline] logs/checkout-debug.log added: 12,000 tokens", tone: "bad" },
+  { label: "Pack unrelated modules", detail: "auth, admin, payments, inventory", log: "[baseline] unrelated modules still included", tone: "warn" },
+  { label: "Build prompt", detail: "14 files bundled", log: "[baseline] prompt assembled with 14 files", tone: "warn" },
+  { label: "Invoke Nova", detail: "86,240 tokens sent", log: "[nova] baseline invocation: 86,240 input tokens", tone: "warn" },
+  { label: "Patch ready", detail: "correct fix, bloated context", log: "[done] baseline patch generated", tone: "good" },
+]
+
+const MOONSHOT_SCRIPT: ScriptStep[] = [
+  { label: "Load task", detail: "checkout discount bug", log: "[task] loaded checkout discount bug", tone: "info" },
+  { label: "Scan repository", detail: "14 files indexed", log: "[scan] indexing mooncart repository", tone: "info" },
+  { label: "Estimate token load", detail: "86,240 baseline tokens", log: "[token] estimated full-context load: 86,240", tone: "info" },
+  { label: "Score relevance", detail: "checkout files ranked highest", log: "[score] ranking files by task relevance", tone: "info" },
+  { label: "Route context", detail: "block noise, keep signal", log: "[route] blocking lockfile, logs, auth, admin", tone: "good" },
+  { label: "Summarize bulky partials", detail: "coupon rules -> 200 tokens", log: "[route] summarizing src/promotions/coupon-rules.ts", tone: "good" },
+  { label: "Build packet", detail: "6 useful context entries", log: "[prompt] optimized packet assembled: 17,920 tokens", tone: "good" },
+  { label: "Invoke Nova", detail: "same fix, smaller input", log: "[nova] moonshot invocation: lean context packet", tone: "good" },
+  { label: "Patch ready", detail: "test passes", log: "[done] optimized run complete", tone: "good" },
+]
+
+const COMMANDS = [
+  "fix checkout discount bug",
+  "compare",
+  "run baseline",
+  "run moonshot",
+  "show repo",
+  "show flamegraph",
+  "show packet",
+  "show patch",
+  "reset",
+]
+
+function delay(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
 
 function formatTokens(tokens: number) {
   return tokens.toLocaleString()
 }
 
-function statusLabel(isRunning: boolean, complete: boolean, idle: string) {
-  if (isRunning) return "Running"
-  if (complete) return "Complete"
-  return idle
-}
-
-function StepRow({
-  index,
-  label,
-  detail,
-  tone,
-  active,
-  complete,
-}: {
-  index: number
-  label: string
-  detail: string
-  tone: "neutral" | "warn" | "bad" | "good"
-  active: boolean
-  complete: boolean
-}) {
-  const palette = {
-    neutral: "border-black/10 bg-white text-black/55",
-    warn: "border-amber-500/20 bg-amber-50 text-amber-800/70",
-    bad: "border-red-500/20 bg-red-50 text-red-800/70",
-    good: "border-emerald-600/20 bg-emerald-50 text-emerald-800/70",
+function toneClass(tone: Tone = "muted") {
+  return {
+    muted: "text-stone-400",
+    info: "text-sky-300",
+    good: "text-emerald-300",
+    warn: "text-amber-300",
+    bad: "text-red-300",
   }[tone]
-
-  return (
-    <div
-      className={`grid grid-cols-[34px_1fr] gap-3 rounded-2xl border p-3 transition-all duration-300 ${
-        complete || active ? palette : "border-black/[0.06] bg-white/55 text-black/30"
-      }`}
-    >
-      <div className={`flex h-8 w-8 items-center justify-center rounded-xl font-mono text-[10px] ${
-        active ? "bg-black text-white" : complete ? "bg-black/[0.08] text-black/50" : "bg-black/[0.035] text-black/25"
-      }`}>
-        {String(index + 1).padStart(2, "0")}
-      </div>
-      <div>
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-medium">{label}</span>
-          {active && <span className="h-2 w-2 rounded-full bg-black" />}
-        </div>
-        <p className="mt-1 text-xs leading-relaxed opacity-70">{detail}</p>
-      </div>
-    </div>
-  )
 }
 
-function RunTrack({
+function decisionClass(decision?: FileDecision["decision"] | FileEntry["category"]) {
+  if (decision === "allowed" || decision === "relevant") return "border-emerald-700/15 bg-emerald-50 text-emerald-800"
+  if (decision === "summarized") return "border-amber-700/15 bg-amber-50 text-amber-800"
+  if (decision === "blocked" || decision === "noise") return "border-red-700/15 bg-red-50 text-red-800"
+  return "border-stone-300 bg-stone-50 text-stone-500"
+}
+
+function useVisibleBaselineFiles(files: FileEntry[], count: number) {
+  return useMemo(() => {
+    if (count <= 1) return []
+    const visible = Math.min(files.length, Math.max(1, count * 2 - 2))
+    return files.slice(0, visible)
+  }, [count, files])
+}
+
+function useVisibleMoonshotFiles(files: FileDecision[], count: number) {
+  return useMemo(() => {
+    if (count <= 1) return []
+    const ordered = [
+      ...files.filter(file => file.decision === "allowed"),
+      ...files.filter(file => file.decision === "summarized"),
+      ...files.filter(file => file.decision === "blocked"),
+    ]
+    const visible = Math.min(ordered.length, Math.max(1, count * 2 - 2))
+    return ordered.slice(0, visible)
+  }, [count, files])
+}
+
+function TrackPanel({
   title,
-  eyebrow,
-  status,
-  tokens,
-  files,
-  waste,
-  variant,
+  kicker,
+  totalTokens,
+  visibleTokens,
+  finalFiles,
+  visibleFiles,
   running,
   complete,
   steps,
+  stepCount,
+  variant,
 }: {
   title: string
-  eyebrow: string
-  status: string
-  tokens: string
-  files: string
-  waste: string
-  variant: "baseline" | "moonshot"
+  kicker: string
+  totalTokens: number
+  visibleTokens: number
+  finalFiles: number
+  visibleFiles: number
   running: boolean
   complete: boolean
-  steps: readonly { label: string; detail: string; tone: "neutral" | "warn" | "bad" | "good" }[]
+  steps: ScriptStep[]
+  stepCount: number
+  variant: "baseline" | "moonshot"
 }) {
-  const accent = variant === "baseline" ? "bg-[#FCE7D9] text-[#7C2D12]" : "bg-[#DDF4E8] text-[#14532D]"
-  const border = variant === "baseline" ? "border-orange-900/10" : "border-emerald-900/10"
-  const activeStep = running ? Math.min(steps.length - 1, Math.floor(Date.now() / 900) % steps.length) : -1
+  const accent = variant === "baseline" ? "bg-red-500" : "bg-emerald-500"
+  const soft = variant === "baseline" ? "from-red-100/80" : "from-emerald-100/80"
+  const displayTokens = complete ? totalTokens : visibleTokens
+  const displayFiles = complete ? finalFiles : visibleFiles
 
   return (
-    <div className={`rounded-[1.75rem] border ${border} bg-[#FFFCF4] p-5 shadow-[0_24px_80px_rgba(36,28,14,0.08)]`}>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.22em] text-black/35">{eyebrow}</div>
-          <h2 className="serif-fine mt-2 text-3xl font-normal text-black/85">{title}</h2>
+    <div className="relative overflow-hidden rounded-[1.75rem] border border-stone-200 bg-[#fffdf6] p-5 shadow-[0_18px_70px_rgba(54,43,22,0.08)]">
+      <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${soft} via-transparent to-transparent opacity-70`} />
+      <div className="relative z-10">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.24em] text-stone-400">{kicker}</div>
+            <h2 className="serif-fine mt-2 text-3xl font-normal text-stone-950">{title}</h2>
+          </div>
+          <span className="rounded-full border border-stone-200 bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-stone-500">
+            {running ? "running" : complete ? "complete" : "idle"}
+          </span>
         </div>
-        <span className={`rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em] ${accent}`}>
-          {status}
-        </span>
-      </div>
 
-      <div className="mt-5 grid grid-cols-3 gap-2">
-        <div className="rounded-2xl border border-black/[0.06] bg-white/75 p-4">
-          <div className="text-[10px] uppercase tracking-[0.18em] text-black/30">Tokens</div>
-          <div className="serif-numerals mt-2 text-3xl font-light text-black/85">{tokens}</div>
+        <div className="mt-5 grid grid-cols-3 gap-2">
+          <div className="rounded-2xl border border-stone-200 bg-white/80 p-4">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-stone-400">Tokens</div>
+            <div className="serif-numerals mt-2 text-3xl font-light text-stone-950">{formatTokens(displayTokens)}</div>
+          </div>
+          <div className="rounded-2xl border border-stone-200 bg-white/80 p-4">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-stone-400">Files</div>
+            <div className="serif-numerals mt-2 text-3xl font-light text-stone-950">{displayFiles}</div>
+          </div>
+          <div className="rounded-2xl border border-stone-200 bg-white/80 p-4">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-stone-400">Signal</div>
+            <div className="serif-numerals mt-2 text-3xl font-light text-stone-950">{variant === "baseline" ? "low" : "high"}</div>
+          </div>
         </div>
-        <div className="rounded-2xl border border-black/[0.06] bg-white/75 p-4">
-          <div className="text-[10px] uppercase tracking-[0.18em] text-black/30">Files</div>
-          <div className="serif-numerals mt-2 text-3xl font-light text-black/85">{files}</div>
-        </div>
-        <div className="rounded-2xl border border-black/[0.06] bg-white/75 p-4">
-          <div className="text-[10px] uppercase tracking-[0.18em] text-black/30">Waste</div>
-          <div className="serif-numerals mt-2 text-3xl font-light text-black/85">{waste}</div>
-        </div>
-      </div>
 
-      <div className="mt-5 space-y-2">
-        {steps.map((step, index) => (
-          <StepRow
-            key={step.label}
-            index={index}
-            label={step.label}
-            detail={step.detail}
-            tone={step.tone}
-            active={running && index === activeStep}
-            complete={complete || (running && index < activeStep)}
-          />
-        ))}
+        <div className="mt-5 space-y-2">
+          {steps.map((step, index) => {
+            const active = running && index === stepCount - 1
+            const visible = index < stepCount || complete
+            return (
+              <div
+                key={step.label}
+                className={`grid grid-cols-[10px_1fr] gap-3 rounded-2xl border p-3 transition-all duration-300 ${
+                  visible ? "border-stone-200 bg-white/85 text-stone-700" : "border-stone-200/70 bg-white/35 text-stone-300"
+                }`}
+              >
+                <div className={`mt-1.5 h-2.5 w-2.5 rounded-full ${active ? accent : visible ? "bg-stone-400" : "bg-stone-200"}`} />
+                <div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-medium">{step.label}</span>
+                    {active && <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-stone-400">now</span>}
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-stone-500">{step.detail}</p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
 }
 
-export function LiveEngineRun({
-  task,
-  baselineFixture,
-  baselineResult,
-  moonshotResult,
-  isRunningBaseline,
-  isRunningMoonshot,
-  activeStage,
-  onRunFullDemo,
-  onRunBaseline,
-  onRunMoonshot,
-}: LiveEngineRunProps) {
-  const running = isRunningBaseline || isRunningMoonshot
-  const baselineComplete = Boolean(baselineResult)
-  const moonshotComplete = Boolean(moonshotResult)
-  const moonshotTokens = moonshotResult?.tokenCount ?? 17920
-  const saved = baselineFixture.totalTokens - moonshotTokens
-  const activeLabel = activeStage ? STAGE_LABELS[activeStage] : "Ready"
+function RepoExplorer({ decisions, visibleCount }: { decisions: FileDecision[]; visibleCount: number }) {
+  const sorted = [
+    ...decisions.filter(file => file.decision === "allowed"),
+    ...decisions.filter(file => file.decision === "summarized"),
+    ...decisions.filter(file => file.decision === "blocked"),
+  ]
 
   return (
-    <section className="relative overflow-hidden rounded-[2rem] border border-black/[0.07] bg-[#F7F1DF] p-4 shadow-[0_30px_100px_rgba(46,36,18,0.14)] md:p-6 lg:p-8">
-      <div
-        className="pointer-events-none absolute inset-0 opacity-80"
-        style={{
-          background:
-            "radial-gradient(circle at 15% 5%, rgba(255,255,255,0.9), transparent 32%), radial-gradient(circle at 88% 12%, rgba(109,147,114,0.18), transparent 28%), linear-gradient(135deg, rgba(255,255,255,0.55), transparent 45%)",
-        }}
-      />
+    <div className="grid gap-2 md:grid-cols-2">
+      {sorted.map((file, index) => {
+        const visible = index < visibleCount
+        return (
+          <div
+            key={file.path}
+            className={`rounded-2xl border p-3 transition-all duration-300 ${
+              visible ? decisionClass(file.decision) : "border-stone-200 bg-white/45 text-stone-300"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="truncate font-mono text-[11px]">{file.path}</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em]">{visible ? file.decision : "queued"}</span>
+            </div>
+            <p className="mt-2 font-mono text-[10px] opacity-70">
+              {visible ? `${file.tokens.toLocaleString()} tokens / score ${file.relevanceScore.toFixed(2)}` : "waiting for router"}
+            </p>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function Flamegraph({
+  baselineFiles,
+  moonshotFiles,
+}: {
+  baselineFiles: FileEntry[]
+  moonshotFiles: FileDecision[]
+}) {
+  const entries = [
+    ...baselineFiles.map(file => ({ path: file.path, tokens: file.tokens, label: file.category, side: "baseline" })),
+    ...moonshotFiles.map(file => ({ path: file.path, tokens: file.tokens, label: file.decision, side: "moonshot" })),
+  ].sort((a, b) => b.tokens - a.tokens)
+  const max = Math.max(1, ...entries.map(entry => entry.tokens))
+
+  return (
+    <div className="space-y-3">
+      {entries.map(entry => (
+        <div key={`${entry.side}-${entry.path}`}>
+          <div className="mb-1 flex items-center justify-between gap-3">
+            <span className="truncate font-mono text-[11px] text-stone-600">{entry.path}</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-stone-400">{entry.side}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="h-3 flex-1 overflow-hidden rounded-full bg-stone-200">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${entry.side === "baseline" ? "bg-red-400" : "bg-emerald-500"}`}
+                style={{ width: `${Math.max(4, (entry.tokens / max) * 100)}%` }}
+              />
+            </div>
+            <span className="w-20 text-right font-mono text-[11px] text-stone-400">{entry.tokens.toLocaleString()}</span>
+          </div>
+        </div>
+      ))}
+      {entries.length === 0 && <p className="text-sm text-stone-400">Run the engine to build the flamegraph.</p>}
+    </div>
+  )
+}
+
+function PacketViewer({ decisions }: { decisions: FileDecision[] }) {
+  const included = decisions.filter(file => file.decision === "allowed" || file.decision === "summarized")
+  return (
+    <pre className="max-h-[360px] overflow-hidden rounded-2xl border border-stone-200 bg-[#111] p-5 font-mono text-[11px] leading-relaxed text-stone-200">
+{`Task:
+  fix checkout bug where discounts are applied after tax
+
+Included context:
+${included.map(file => `  ${file.decision === "summarized" ? "~" : "+"} ${file.path} (${file.tokens.toLocaleString()} tokens)`).join("\n")}
+
+Blocked:
+${decisions.filter(file => file.decision === "blocked").slice(0, 6).map(file => `  - ${file.path}`).join("\n")}
+`}
+    </pre>
+  )
+}
+
+function PatchViewer({ run }: { run: MoonshotRunResult }) {
+  return (
+    <div className="grid gap-3 lg:grid-cols-3">
+      <div className="rounded-2xl border border-stone-200 bg-white/70 p-4">
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-400">Root cause</div>
+        <p className="mt-3 text-sm leading-relaxed text-stone-600">{run.novaOutput.rootCause}</p>
+      </div>
+      <div className="rounded-2xl border border-stone-200 bg-[#111] p-4 lg:col-span-2">
+        <div className="mb-3 text-[10px] uppercase tracking-[0.18em] text-stone-500">Patch</div>
+        <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-stone-200">{run.novaOutput.patch.after}</pre>
+      </div>
+      <div className="rounded-2xl border border-emerald-700/15 bg-emerald-50 p-4 lg:col-span-3">
+        <div className="text-[10px] uppercase tracking-[0.18em] text-emerald-800/50">Test result</div>
+        <p className="mt-2 text-sm text-emerald-900/70">
+          Passed: {run.novaOutput.testResult.description}. Expected {run.novaOutput.testResult.expected}, actual {run.novaOutput.testResult.actual}.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+export function LiveEngineRun({ task, baselineFixture, moonshotRun }: LiveEngineRunProps) {
+  const [input, setInput] = useState("")
+  const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([
+    { text: "moonshot console ready", tone: "good" },
+    { text: "try: fix checkout discount bug, compare, show repo, show packet", tone: "muted" },
+  ])
+  const [isRunning, setIsRunning] = useState(false)
+  const [baselineStepCount, setBaselineStepCount] = useState(0)
+  const [moonshotStepCount, setMoonshotStepCount] = useState(0)
+  const [tab, setTab] = useState<TabKey>("repo")
+
+  const visibleBaselineFiles = useVisibleBaselineFiles(baselineFixture.files, baselineStepCount)
+  const visibleMoonshotFiles = useVisibleMoonshotFiles(moonshotRun.files, moonshotStepCount)
+  const baselineTokens = baselineStepCount >= BASELINE_SCRIPT.length
+    ? baselineFixture.totalTokens
+    : visibleBaselineFiles.reduce((sum, file) => sum + file.tokens, 0)
+  const moonshotTokens = moonshotStepCount >= MOONSHOT_SCRIPT.length
+    ? moonshotRun.tokenCount
+    : visibleMoonshotFiles.filter(file => file.decision !== "blocked").reduce((sum, file) => sum + file.tokens, 0)
+  const savings = Math.max(0, baselineFixture.totalTokens - moonshotRun.tokenCount)
+
+  function addLine(line: TerminalLine) {
+    setTerminalLines(lines => [...lines.slice(-13), line])
+  }
+
+  function reset() {
+    setBaselineStepCount(0)
+    setMoonshotStepCount(0)
+    setTab("repo")
+    setTerminalLines([
+      { text: "moonshot console reset", tone: "good" },
+      { text: "try: compare", tone: "muted" },
+    ])
+  }
+
+  async function run(mode: RunMode) {
+    if (isRunning) return
+    setIsRunning(true)
+    setBaselineStepCount(0)
+    setMoonshotStepCount(0)
+    setTab("repo")
+    addLine({ text: `$ ${mode}`, tone: "muted" })
+    addLine({ text: "[engine] run started", tone: "info" })
+
+    const maxSteps = Math.max(
+      mode === "moonshot" ? 0 : BASELINE_SCRIPT.length,
+      mode === "baseline" ? 0 : MOONSHOT_SCRIPT.length,
+    )
+
+    for (let i = 0; i < maxSteps; i++) {
+      await delay(i === 0 ? 250 : 520)
+      if (mode !== "moonshot" && BASELINE_SCRIPT[i]) {
+        setBaselineStepCount(i + 1)
+        addLine({ text: BASELINE_SCRIPT[i].log, tone: BASELINE_SCRIPT[i].tone })
+      }
+      if (mode !== "baseline" && MOONSHOT_SCRIPT[i]) {
+        setMoonshotStepCount(i + 1)
+        addLine({ text: MOONSHOT_SCRIPT[i].log, tone: MOONSHOT_SCRIPT[i].tone })
+      }
+      if (i === 4) setTab("flamegraph")
+      if (i === 6) setTab("packet")
+    }
+
+    setTab("patch")
+    addLine({ text: `[analytics] avoided ${savings.toLocaleString()} context tokens`, tone: "good" })
+    addLine({ text: "[done] same checkout fix, smaller prompt", tone: "good" })
+    setIsRunning(false)
+  }
+
+  function runCommand(raw: string) {
+    const command = raw.trim().toLowerCase()
+    if (!command) return
+    setInput("")
+
+    if (command.includes("reset")) {
+      reset()
+      return
+    }
+    if (command.includes("repo")) {
+      setTab("repo")
+      addLine({ text: "$ show repo", tone: "muted" })
+      addLine({ text: "[view] repo explorer opened", tone: "info" })
+      return
+    }
+    if (command.includes("flame") || command.includes("analytics")) {
+      setTab("flamegraph")
+      addLine({ text: "$ show flamegraph", tone: "muted" })
+      addLine({ text: "[view] token flamegraph opened", tone: "info" })
+      return
+    }
+    if (command.includes("packet") || command.includes("diff")) {
+      setTab("packet")
+      addLine({ text: "$ show packet", tone: "muted" })
+      addLine({ text: "[view] optimized packet opened", tone: "info" })
+      return
+    }
+    if (command.includes("patch") || command.includes("output")) {
+      setTab("patch")
+      addLine({ text: "$ show patch", tone: "muted" })
+      addLine({ text: "[view] Nova patch opened", tone: "info" })
+      return
+    }
+    if (command.includes("baseline")) {
+      void run("baseline")
+      return
+    }
+    if (command.includes("moonshot") || command.includes("optimize")) {
+      void run("moonshot")
+      return
+    }
+
+    addLine({ text: `$ ${raw}`, tone: "muted" })
+    addLine({ text: `[task] ${task}`, tone: "info" })
+    addLine({ text: "[select] type compare, run baseline, or run moonshot", tone: "muted" })
+    if (command.includes("compare") || command.includes("fix") || command.includes("checkout")) {
+      void run("compare")
+    }
+  }
+
+  return (
+    <section className="relative overflow-hidden rounded-[2rem] border border-stone-200 bg-[#F7F1DF] p-4 shadow-[0_30px_100px_rgba(46,36,18,0.14)] md:p-6 lg:p-8">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_0%,rgba(255,255,255,0.9),transparent_34%),radial-gradient(circle_at_85%_12%,rgba(74,121,89,0.22),transparent_28%)]" />
 
       <div className="relative z-10">
-        <div className="mb-6 grid gap-5 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
+        <div className="mb-6 grid gap-5 xl:grid-cols-[0.92fr_1.08fr]">
           <div>
-            <div className="inline-flex rounded-full border border-black/[0.08] bg-white/60 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-black/45">
-              Live moonshot engine
+            <div className="inline-flex rounded-full border border-stone-300 bg-white/65 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-stone-500">
+              moonshot interactive console
             </div>
-            <h1 className="display mt-5 max-w-4xl text-5xl leading-[0.95] text-black md:text-7xl">
-              One bug. Two context strategies.
+            <h1 className="display mt-5 max-w-4xl text-5xl leading-[0.95] text-stone-950 md:text-7xl">
+              Type a task. Watch context get routed.
             </h1>
-            <p className="mt-5 max-w-2xl text-base leading-relaxed text-black/50">
-              Run baseline Nova beside moonshot. The left path ships a full repo dump; the right path performs pre-inference routing and sends a smaller packet to the same model.
+            <p className="mt-5 max-w-2xl text-base leading-relaxed text-stone-600">
+              This is the engine view: baseline sends the messy repo to Nova, while moonshot scores files, blocks token waste, builds a lean prompt packet, and returns the same checkout fix.
             </p>
           </div>
 
-          <div className="rounded-[1.5rem] border border-black/[0.08] bg-[#111] p-5 text-white shadow-2xl">
-            <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">Task prompt</div>
-            <p className="mt-3 text-lg leading-relaxed text-white/80">{task}</p>
-            <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-              <button
-                onClick={onRunFullDemo}
-                disabled={running}
-                className="rounded-xl bg-white px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#111] transition hover:bg-white/85 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {running ? activeLabel : "Run engine"}
-              </button>
-              <button
-                onClick={onRunBaseline}
-                disabled={running}
-                className="rounded-xl border border-white/15 px-5 py-3 text-[11px] font-medium uppercase tracking-[0.2em] text-white/60 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Baseline
-              </button>
-              <button
-                onClick={onRunMoonshot}
-                disabled={running}
-                className="rounded-xl border border-emerald-300/25 px-5 py-3 text-[11px] font-medium uppercase tracking-[0.2em] text-emerald-200 transition hover:bg-emerald-300/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                moonshot
-              </button>
+          <div className="rounded-[1.5rem] border border-stone-900/10 bg-[#111] p-4 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between gap-4 border-b border-white/10 pb-3">
+              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/35">terminal</div>
+              <div className="flex gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+              </div>
             </div>
-            <div className="mt-4 flex flex-wrap items-center gap-3 font-mono text-[11px] text-white/35">
-              <a href="https://github.com/Aaxhirrr/moonshot" target="_blank" rel="noreferrer" className="underline-offset-4 hover:text-white/70 hover:underline">
-                github.com/Aaxhirrr/moonshot
-              </a>
-              <span>/</span>
-              <a href="/analysis" className="underline-offset-4 hover:text-white/70 hover:underline">
-                view analysis
-              </a>
+
+            <div className="min-h-[260px] space-y-1 overflow-hidden">
+              {terminalLines.map((line, index) => (
+                <div key={`${line.text}-${index}`} className={`font-mono text-[12px] leading-6 ${toneClass(line.tone)}`}>
+                  {line.text}
+                </div>
+              ))}
+            </div>
+
+            <form
+              className="mt-4 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2"
+              onSubmit={event => {
+                event.preventDefault()
+                runCommand(input)
+              }}
+            >
+              <span className="font-mono text-sm text-emerald-300">moonshot&gt;</span>
+              <input
+                value={input}
+                onChange={event => setInput(event.target.value)}
+                disabled={isRunning}
+                placeholder="fix checkout discount bug"
+                className="min-w-0 flex-1 bg-transparent font-mono text-sm text-white outline-none placeholder:text-white/25 disabled:cursor-not-allowed"
+              />
+              <button
+                type="submit"
+                disabled={isRunning}
+                className="rounded-xl bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-stone-950 disabled:opacity-40"
+              >
+                Enter
+              </button>
+            </form>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {COMMANDS.slice(1, 7).map(command => (
+                <button
+                  key={command}
+                  onClick={() => runCommand(command)}
+                  disabled={isRunning}
+                  className="rounded-full border border-white/10 px-3 py-1 font-mono text-[10px] text-white/45 transition hover:bg-white/[0.06] hover:text-white/75 disabled:opacity-35"
+                >
+                  {command}
+                </button>
+              ))}
             </div>
           </div>
         </div>
 
-        <div className="mb-4 grid gap-3 md:grid-cols-3">
-          <div className="rounded-2xl border border-black/[0.07] bg-white/65 p-4">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-black/35">Context avoided</div>
-            <div className="serif-numerals mt-2 text-4xl font-light">{formatTokens(Math.max(0, saved))}</div>
+        <div className="mb-4 grid gap-3 md:grid-cols-4">
+          <div className="rounded-2xl border border-stone-200 bg-white/70 p-4">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-stone-400">Baseline tokens</div>
+            <div className="serif-numerals mt-2 text-4xl font-light">{formatTokens(baselineTokens)}</div>
           </div>
-          <div className="rounded-2xl border border-black/[0.07] bg-white/65 p-4">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-black/35">Same output</div>
-            <div className="serif-fine mt-2 text-3xl font-normal">Patch + test</div>
+          <div className="rounded-2xl border border-stone-200 bg-white/70 p-4">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-stone-400">moonshot tokens</div>
+            <div className="serif-numerals mt-2 text-4xl font-light">{formatTokens(moonshotTokens)}</div>
           </div>
-          <div className="rounded-2xl border border-black/[0.07] bg-white/65 p-4">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-black/35">Current stage</div>
-            <div className="serif-fine mt-2 text-3xl font-normal">{activeLabel}</div>
+          <div className="rounded-2xl border border-stone-200 bg-white/70 p-4">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-stone-400">Tokens avoided</div>
+            <div className="serif-numerals mt-2 text-4xl font-light">{formatTokens(Math.max(0, baselineFixture.totalTokens - moonshotRun.tokenCount))}</div>
           </div>
+          <a href="/analysis" className="rounded-2xl border border-stone-900/10 bg-stone-950 p-4 text-white transition hover:-translate-y-0.5 hover:bg-stone-800">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-white/35">After run</div>
+            <div className="serif-fine mt-2 text-3xl font-normal">Open analysis</div>
+          </a>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[1fr_auto_1fr] xl:items-stretch">
-          <RunTrack
+        <div className="grid gap-4 xl:grid-cols-[1fr_auto_1fr]">
+          <TrackPanel
             title="Baseline Nova"
-            eyebrow="Naive context path"
-            status={statusLabel(isRunningBaseline, baselineComplete, "Idle")}
-            tokens={baselineComplete || isRunningBaseline ? formatTokens(baselineFixture.totalTokens) : "0"}
-            files={baselineComplete || isRunningBaseline ? `${baselineFixture.fileCount}` : "0"}
-            waste={baselineComplete || isRunningBaseline ? "84%" : "-"}
+            kicker="Full repo context"
+            totalTokens={baselineFixture.totalTokens}
+            visibleTokens={baselineTokens}
+            finalFiles={baselineFixture.fileCount}
+            visibleFiles={visibleBaselineFiles.length}
+            running={isRunning && baselineStepCount < BASELINE_SCRIPT.length && baselineStepCount > 0}
+            complete={baselineStepCount >= BASELINE_SCRIPT.length}
+            steps={BASELINE_SCRIPT}
+            stepCount={baselineStepCount}
             variant="baseline"
-            running={isRunningBaseline}
-            complete={baselineComplete}
-            steps={BASELINE_STEPS}
           />
 
-          <div className="hidden w-[76px] items-center justify-center xl:flex">
-            <div className="rounded-full border border-black/[0.08] bg-white/80 px-3 py-8 text-center font-mono text-[10px] uppercase tracking-[0.18em] text-black/35 shadow-sm">
+          <div className="hidden w-[72px] items-center justify-center xl:flex">
+            <div className="rounded-full border border-stone-200 bg-white/80 px-3 py-8 text-center font-mono text-[10px] uppercase tracking-[0.18em] text-stone-400 shadow-sm">
               vs
             </div>
           </div>
 
-          <RunTrack
+          <TrackPanel
             title="moonshot"
-            eyebrow="Context engine path"
-            status={statusLabel(isRunningMoonshot, moonshotComplete, "Ready")}
-            tokens={moonshotComplete || isRunningMoonshot ? formatTokens(moonshotTokens) : "0"}
-            files={moonshotComplete || isRunningMoonshot ? `${moonshotResult?.fileCount ?? 6}` : "0"}
-            waste={moonshotComplete || isRunningMoonshot ? "low" : "-"}
+            kicker="Context routing engine"
+            totalTokens={moonshotRun.tokenCount}
+            visibleTokens={moonshotTokens}
+            finalFiles={moonshotRun.fileCount}
+            visibleFiles={visibleMoonshotFiles.filter(file => file.decision !== "blocked").length}
+            running={isRunning && moonshotStepCount < MOONSHOT_SCRIPT.length && moonshotStepCount > 0}
+            complete={moonshotStepCount >= MOONSHOT_SCRIPT.length}
+            steps={MOONSHOT_SCRIPT}
+            stepCount={moonshotStepCount}
             variant="moonshot"
-            running={isRunningMoonshot}
-            complete={moonshotComplete}
-            steps={MOONSHOT_STEPS}
           />
+        </div>
+
+        <div className="mt-4 rounded-[1.5rem] border border-stone-200 bg-white/70 p-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-stone-400">Live inspection</div>
+              <h3 className="serif-fine mt-1 text-2xl font-normal">What moonshot is sending to Nova</h3>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {([
+                ["repo", "Repo"],
+                ["flamegraph", "Flamegraph"],
+                ["packet", "Prompt packet"],
+                ["patch", "Patch"],
+              ] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setTab(key)}
+                  className={`rounded-full px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition ${
+                    tab === key ? "bg-stone-950 text-white" : "border border-stone-200 bg-white text-stone-500 hover:bg-stone-50"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {tab === "repo" && <RepoExplorer decisions={moonshotRun.files} visibleCount={visibleMoonshotFiles.length} />}
+          {tab === "flamegraph" && <Flamegraph baselineFiles={visibleBaselineFiles} moonshotFiles={visibleMoonshotFiles} />}
+          {tab === "packet" && <PacketViewer decisions={moonshotRun.files} />}
+          {tab === "patch" && <PatchViewer run={moonshotRun} />}
         </div>
       </div>
     </section>

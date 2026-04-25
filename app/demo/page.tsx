@@ -1,29 +1,14 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { LiveEngineRun } from "@/components/demo/live-engine-run"
 import baselineRunJson from "@/data/baselineRun.json"
 import demoRepoJson from "@/data/demoRepo.json"
 import { countAllowedTokens, routeContext } from "@/lib/contextRouter"
-import type { BaselineRunData, DemoRepo, MoonshotRunResult, PipelineStage } from "@/types"
+import type { BaselineRunData, DemoRepo, MoonshotRunResult } from "@/types"
 
 const TASK = "Fix checkout bug where discounts are applied after tax instead of before tax."
 const TOKEN_BUDGET = 20000
-
-const PIPELINE_STAGES: PipelineStage[] = [
-  "task-input",
-  "repo-scanner",
-  "token-estimator",
-  "relevance-scorer",
-  "context-router",
-  "prompt-builder",
-  "nova-api",
-  "output",
-]
-
-function delay(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
 
 export default function DemoPage() {
   const baselineFixture = baselineRunJson as BaselineRunData
@@ -48,51 +33,6 @@ export default function DemoPage() {
     }
   }, [baselineFixture, demoRepo.files])
 
-  const [baselineResult, setBaselineResult] = useState<BaselineRunData | null>(null)
-  const [moonshotResult, setMoonshotResult] = useState<MoonshotRunResult | null>(null)
-  const [isRunningBaseline, setIsRunningBaseline] = useState(false)
-  const [isRunningMoonshot, setIsRunningMoonshot] = useState(false)
-  const [activeStage, setActiveStage] = useState<PipelineStage | undefined>()
-
-  async function runBaseline() {
-    if (isRunningBaseline || isRunningMoonshot) return
-
-    setMoonshotResult(null)
-    setBaselineResult(null)
-    setIsRunningBaseline(true)
-    setActiveStage("nova-api")
-    await delay(850)
-    setBaselineResult(baselineFixture)
-    setIsRunningBaseline(false)
-    setActiveStage("output")
-  }
-
-  async function runMoonshot() {
-    if (isRunningBaseline || isRunningMoonshot) return
-
-    if (!baselineResult) {
-      setBaselineResult(baselineFixture)
-    }
-
-    setMoonshotResult(moonshotRun)
-    setIsRunningMoonshot(true)
-
-    for (const stage of PIPELINE_STAGES) {
-      setActiveStage(stage)
-      await delay(stage === "context-router" ? 700 : 430)
-    }
-
-    setIsRunningMoonshot(false)
-    setActiveStage("output")
-  }
-
-  async function runFullDemo() {
-    if (isRunningBaseline || isRunningMoonshot) return
-    await runBaseline()
-    await delay(300)
-    await runMoonshot()
-  }
-
   return (
     <main className="min-h-screen bg-[#F2EFE5] px-4 py-6 text-[#111] md:px-8 lg:px-12">
       <nav className="mx-auto mb-8 flex max-w-7xl items-center justify-between rounded-2xl border border-black/[0.07] bg-white/55 px-5 py-3 backdrop-blur-xl">
@@ -114,14 +54,7 @@ export default function DemoPage() {
         <LiveEngineRun
           task={TASK}
           baselineFixture={baselineFixture}
-          baselineResult={baselineResult}
-          moonshotResult={moonshotResult}
-          isRunningBaseline={isRunningBaseline}
-          isRunningMoonshot={isRunningMoonshot}
-          activeStage={activeStage}
-          onRunBaseline={() => { void runBaseline() }}
-          onRunMoonshot={() => { void runMoonshot() }}
-          onRunFullDemo={() => { void runFullDemo() }}
+          moonshotRun={moonshotRun}
         />
       </div>
     </main>
