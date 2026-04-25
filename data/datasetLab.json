@@ -1,127 +1,90 @@
 {
   "summary": {
-    "name": "SWE-style archive sample",
-    "tasks": 2,
-    "files": 18,
-    "estimatedTokens": 487320,
-    "languages": ["Go", "Scala"],
-    "repos": ["miekg/dns", "scala-steward/scala-steward"]
+    "name": "SWE-Bench-style live target",
+    "tasks": 1,
+    "files": 13,
+    "estimatedTokens": 86240,
+    "languages": ["JavaScript"],
+    "repos": ["Aaxhirrr/swe-bench-context-repo"]
   },
   "tasks": [
     {
-      "id": "SWE-GO-1627",
-      "repo": "miekg/dns",
-      "language": "Go",
-      "title": "Fix DNS message handling regression",
-      "issue": "A generated DNS message path fails after a patch changes how records are parsed and serialized. The task includes install logs, test patches, golden patches, and noisy environment artifacts.",
-      "baselineTokens": 193420,
-      "optimizedTokens": 28640,
+      "id": "SWE-JS-0001",
+      "repo": "Aaxhirrr/swe-bench-context-repo",
+      "language": "JavaScript",
+      "title": "Fix checkout discount/tax ordering",
+      "issue": "Checkout totals are too high because the discount is applied after tax. Apply the discount to the subtotal first, then calculate tax on the discounted subtotal. The public target repo fails `npm test` on main and passes on the golden fix branch.",
+      "baselineTokens": 86240,
+      "optimizedTokens": 17920,
       "candidateFiles": [
         {
-          "path": "dns.go",
-          "tokens": 9800,
-          "score": 0.92,
+          "path": "src/checkout/pricing.js",
+          "tokens": 2480,
+          "score": 0.97,
           "decision": "selected",
-          "preview": "func (dns *Msg) Pack() ([]byte, error) { /* serialization path */ }"
+          "preview": "const tax = calculateTax(subtotal, taxRate); const postTaxTotal = subtotal + tax; return applyDiscount(postTaxTotal, discount)"
         },
         {
-          "path": "msg.go",
+          "path": "src/checkout/discounts.js",
+          "tokens": 860,
+          "score": 0.84,
+          "decision": "selected",
+          "preview": "export function applyDiscount(amount, discount) { return roundMoney(Math.max(0, amount - discount)) }"
+        },
+        {
+          "path": "src/checkout/tax-rules.js",
+          "tokens": 920,
+          "score": 0.81,
+          "decision": "selected",
+          "preview": "export function calculateTax(amount, taxRate) { return roundMoney(amount * taxRate) }"
+        },
+        {
+          "path": "tests/checkout-pricing.test.js",
+          "tokens": 1420,
+          "score": 0.93,
+          "decision": "selected",
+          "preview": "assert.equal(calculateCheckoutTotal({ subtotal: 100, discount: 20, taxRate: 0.1 }), 88)"
+        },
+        {
+          "path": "docs/pricing-rules.md",
+          "tokens": 1180,
+          "score": 0.66,
+          "decision": "selected",
+          "preview": "Pricing rules say discounts must be applied before tax. Example total is 88."
+        },
+        {
+          "path": "logs/checkout-debug.log",
           "tokens": 12400,
-          "score": 0.88,
-          "decision": "selected",
-          "preview": "func unpackMsgHdr(msg []byte, off int) (Header, int, error) { /* parser */ }"
-        },
-        {
-          "path": "types.go",
-          "tokens": 6440,
-          "score": 0.61,
-          "decision": "selected",
-          "preview": "type RR interface { Header() *RR_Header; String() string }"
-        },
-        {
-          "path": "after_test_patch.txt",
-          "tokens": 34400,
-          "score": 0.42,
+          "score": 0.41,
           "decision": "summarized",
-          "preview": "Long test execution log summarized into failure signature and affected assertions."
+          "preview": "Log summarized to the observed failure: subtotal=100 discount=20 taxRate=0.1 total=90."
         },
         {
-          "path": "installation.txt",
-          "tokens": 33782,
-          "score": 0.08,
+          "path": "generated/api-client.js",
+          "tokens": 24800,
+          "score": 0.06,
           "decision": "blocked",
-          "preview": "Install output, dependency download noise, shell environment."
+          "preview": "Generated inventory and analytics client. Low relevance and high token cost."
         },
         {
-          "path": ".env",
-          "tokens": 80,
-          "score": 0,
+          "path": "src/auth/session.js",
+          "tokens": 6200,
+          "score": 0.03,
           "decision": "blocked",
-          "preview": "Environment metadata intentionally excluded from public context."
-        }
-      ],
-      "cachedNova": {
-        "rootCause": "The parser and serializer disagreed on record shape after the patch, so the generated fixture failed the round-trip assertion.",
-        "patch": "Guard the record path before packing and normalize the header length during unpack.",
-        "test": "go test ./... passed on the targeted DNS message test."
-      }
-    },
-    {
-      "id": "SWE-SCALA-2884",
-      "repo": "scala-steward/scala-steward",
-      "language": "Scala",
-      "title": "Fix Scala steward update parsing behavior",
-      "issue": "A dependency update workflow fails when parsing a generated XML installation trace and applying the expected golden patch. The useful context is buried under bulky XML logs and IDE artifacts.",
-      "baselineTokens": 293900,
-      "optimizedTokens": 31280,
-      "candidateFiles": [
-        {
-          "path": "modules/core/src/main/scala/org/scalasteward/core/update/Update.scala",
-          "tokens": 10600,
-          "score": 0.9,
-          "decision": "selected",
-          "preview": "final case class Update(groupId: GroupId, artifactId: ArtifactId, version: Version)"
+          "preview": "Authentication session helper unrelated to checkout totals."
         },
         {
-          "path": "modules/core/src/main/scala/org/scalasteward/core/io/ProcessAlg.scala",
-          "tokens": 8800,
-          "score": 0.74,
-          "decision": "selected",
-          "preview": "def exec(command: Nel[String], cwd: Path): F[CmdResult] = ..."
-        },
-        {
-          "path": "golden.patch",
-          "tokens": 985,
-          "score": 0.71,
-          "decision": "selected",
-          "preview": "Expected dependency update diff used as compact task supervision."
-        },
-        {
-          "path": "after_test_patch.xml",
-          "tokens": 449445,
-          "score": 0.44,
-          "decision": "summarized",
-          "preview": "Huge XML test trace summarized to failing command, file path, and assertion."
-        },
-        {
-          "path": ".idea/workspace.xml",
-          "tokens": 18200,
+          "path": "src/admin/dashboard.js",
+          "tokens": 5200,
           "score": 0.02,
           "decision": "blocked",
-          "preview": "IDE workspace artifact blocked as irrelevant context."
-        },
-        {
-          "path": ".env",
-          "tokens": 24,
-          "score": 0,
-          "decision": "blocked",
-          "preview": "Environment metadata intentionally excluded."
+          "preview": "Admin dashboard aggregation unrelated to pricing behavior."
         }
       ],
       "cachedNova": {
-        "rootCause": "The update workflow consumed a noisy XML trace instead of the compact failing command and golden patch context.",
-        "patch": "Route the update parser through the compact patch metadata and preserve the expected version comparison.",
-        "test": "Targeted Scala Steward golden patch test passes in cached run."
+        "rootCause": "The checkout total calculates tax from the original subtotal, then subtracts the discount from the post-tax amount.",
+        "patch": "In src/checkout/pricing.js, compute discountedSubtotal first, calculate tax on that discounted amount, and return discountedSubtotal + tax.",
+        "test": "npm test fails on main with 90 !== 88 and passes on golden/fix-checkout-tax-order."
       }
     }
   ]

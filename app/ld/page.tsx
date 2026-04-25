@@ -73,8 +73,8 @@ const TASK = "Fix checkout bug where discounts are applied after tax instead of 
 const TOKEN_BUDGET = 20000
 
 const LIVE_ENGINE_LOGS: { text: string; tone: Tone }[] = [
-  { text: "[task] loaded mooncart checkout bug", tone: "info" },
-  { text: "[scan] indexing sanitized mooncart fixture", tone: "info" },
+  { text: "[task] loaded SWE-JS-0001 checkout pricing bug", tone: "info" },
+  { text: "[scan] indexing Aaxhirrr/swe-bench-context-repo", tone: "info" },
   { text: "[token] baseline context estimate: 86,240", tone: "warn" },
   { text: "[score] checkout/cart.ts ranked 0.97", tone: "good" },
   { text: "[route] blocked package-lock.json and logs/checkout-debug.log", tone: "good" },
@@ -390,8 +390,8 @@ function RepoExplorer({
   return (
     <div className="grid gap-4 xl:grid-cols-2">
       <div className="rounded-[1.5rem] border border-stone-200 bg-white/70 p-5">
-        <div className="text-[10px] uppercase tracking-[0.22em] text-stone-400">mooncart repo</div>
-        <h3 className="serif-fine mt-2 text-3xl font-normal">Live mooncart tree</h3>
+        <div className="text-[10px] uppercase tracking-[0.22em] text-stone-400">SWE-Bench target repo</div>
+        <h3 className="serif-fine mt-2 text-3xl font-normal">Live context tree</h3>
         <div className="mt-5 space-y-2">
           {moonshot.files.map(file => (
             <div key={file.path} className={`rounded-2xl border p-3 ${decisionClass(file.decision)}`}>
@@ -430,7 +430,7 @@ export default function LDPage() {
   const [running, setRunning] = useState(false)
   const [visibleSteps, setVisibleSteps] = useState(0)
   const [logs, setLogs] = useState<{ text: string; tone: Tone }[]>([
-    { text: "Live Demo ready; /demo stable page is untouched", tone: "good" },
+    { text: "Live Demo ready; target repo Aaxhirrr/swe-bench-context-repo", tone: "good" },
     { text: "try: run live-demo, open dataset-lab, or run nova --real", tone: "muted" },
   ])
   const [taskId, setTaskId] = useState(data.tasks[0].id)
