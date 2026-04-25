@@ -71,17 +71,17 @@ export function DemoComparison({
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[2rem] border border-black/[0.07] bg-[#fbf9f1]/85 p-6 shadow-sm md:p-8">
+      <section id="analysis" className="rounded-[2rem] border border-black/[0.07] bg-[#fbf9f1]/85 p-6 shadow-sm md:p-8">
         <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
           <div>
             <div className="mb-4 inline-flex rounded-full border border-black/[0.07] bg-black/[0.035] px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-black/45">
-              Scripted hackathon demo
+              Demo results and analysis
             </div>
             <h1 className="display max-w-4xl text-5xl leading-[0.95] md:text-7xl">
-              Watch wasted AI context disappear before Nova sees it.
+              After the run: what changed?
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-relaxed text-black/45">
-              Baseline Nova receives the entire messy mooncart context. moonshot scans, scores, blocks, and summarizes first, then sends a leaner context packet with the same checkout fix.
+              The live run above is the product moment. This analysis view breaks down the token economics, routing decisions, context diff, and Nova patch so judges can see exactly what moonshot optimized.
             </p>
           </div>
 

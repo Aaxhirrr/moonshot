@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { DemoComparison } from "@/components/demo/demo-comparison"
+import { LiveEngineRun } from "@/components/demo/live-engine-run"
 import baselineRunJson from "@/data/baselineRun.json"
 import demoRepoJson from "@/data/demoRepo.json"
 import { buildPrompt, countAllowedTokens, routeContext } from "@/lib/contextRouter"
@@ -127,6 +128,12 @@ export default function DemoPage() {
       <nav className="mx-auto mb-8 flex max-w-7xl items-center justify-between rounded-2xl border border-black/[0.07] bg-white/45 px-5 py-3 backdrop-blur-xl">
         <a href="/" className="font-pixel text-xs tracking-[0.25em] text-black/65">moonshot</a>
         <div className="flex items-center gap-4">
+          <a href="#live-run" className="hidden text-xs tracking-widest text-black/35 transition hover:text-black/70 sm:block">
+            Live Run
+          </a>
+          <a href="#analysis" className="hidden text-xs tracking-widest text-black/35 transition hover:text-black/70 sm:block">
+            Analysis
+          </a>
           <a href="/#workflow" className="hidden text-xs tracking-widest text-black/35 transition hover:text-black/70 sm:block">
             Architecture
           </a>
@@ -137,6 +144,19 @@ export default function DemoPage() {
       </nav>
 
       <div className="mx-auto max-w-7xl">
+        <LiveEngineRun
+          task={TASK}
+          baselineFixture={baselineFixture}
+          baselineResult={baselineResult}
+          moonshotResult={moonshotResult}
+          isRunningBaseline={isRunningBaseline}
+          isRunningMoonshot={isRunningMoonshot}
+          activeStage={activeStage}
+          onRunBaseline={() => { void runBaseline() }}
+          onRunMoonshot={() => { void runMoonshot() }}
+          onRunFullDemo={() => { void runFullDemo() }}
+        />
+
         <DemoComparison
           task={TASK}
           baselineFixture={baselineFixture}
