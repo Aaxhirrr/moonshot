@@ -242,6 +242,10 @@ NOVA_TIMEOUT_MS=20000
 
 That's the whole pitch. The demo proves it, live, on demand.
 
+**NOTE to the judges:** 
+The video demo is intentionally sped up and cut short during the database scan since the entire scan is a very long process.
+The live UI vercel link DOES NOT support a live API anymore since we ran out of credits, but it still is functional, interactive and gives a complete overview of what the app does.
+
 ---
 
-*Built for the Amazon Nova Hackathon. Powered by Amazon Nova Premier. Developed entirely with Kiro.*
+*Built for the Amazon kiro x Spark Hackathon. Powered by Amazon Nova Premier. Developed entirely with Kiro.*
